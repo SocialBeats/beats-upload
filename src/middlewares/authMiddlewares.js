@@ -7,6 +7,7 @@ const openPaths = [
   '/api/v1/about',
   '/api/v1/changelog',
   '/api/v1/version',
+  '/api/v1/beats',
 ];
 
 const verifyToken = (req, res, next) => {
