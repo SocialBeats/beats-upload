@@ -75,12 +75,6 @@ const router = express.Router();
  *               type: number
  *             downloads:
  *               type: number
- *         status:
- *           type: string
- *           enum: [draft, published, archived]
- *         createdAt:
- *           type: string
- *           format: date-time
  *         updatedAt:
  *           type: string
  *           format: date-time
@@ -454,7 +448,7 @@ router.put('/:id', BeatController.updateBeat);
  *     tags:
  *       - Beats
  *     summary: Eliminar un beat
- *     description: Elimina un beat (soft delete - cambia status a archived)
+ *     description: Elimina un beat permanentemente de la base de datos.
  *     parameters:
  *       - in: path
  *         name: id
@@ -523,43 +517,5 @@ router.delete('/:id', BeatController.deleteBeat);
  *         description: Beat no encontrado
  */
 router.post('/:id/play', BeatController.playBeat);
-
-/**
- * @swagger
- * /api/v1/beats/{id}/publish:
- *   post:
- *     tags:
- *       - Beats
- *     summary: Publicar beat
- *     description: Cambia el estado del beat a 'published'
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: ID del beat
- *     responses:
- *       200:
- *         description: Beat publicado exitosamente
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: "Beat published successfully"
- *                 data:
- *                   $ref: '#/components/schemas/Beat'
- *       404:
- *         description: Beat no encontrado
- *       400:
- *         description: ID de beat inválido
- */
-router.post('/:id/publish', BeatController.publishBeat);
 
 export default router;

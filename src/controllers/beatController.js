@@ -167,7 +167,6 @@ export class BeatController {
       // Remover campos que no se deben actualizar directamente
       delete updateData._id;
       delete updateData.createdAt;
-      delete updateData.uploadedAt;
       delete updateData.stats; // Las stats se actualizan por métodos específicos
 
       const updatedBeat = await BeatService.updateBeat(id, updateData);
@@ -217,7 +216,7 @@ export class BeatController {
   }
 
   /**
-   * DELETE - Eliminar un beat (soft delete)
+   * DELETE - Eliminar un beat
    * DELETE /api/v1/beats/:id
    */
   static async deleteBeat(req, res) {
@@ -349,39 +348,6 @@ export class BeatController {
       res.status(500).json({
         success: false,
         message: 'Error retrieving statistics',
-        error:
-          process.env.NODE_ENV === 'development' ? error.message : undefined,
-      });
-    }
-  }
-
-  /**
-   * PUBLISH - Publicar un beat
-   * POST /api/v1/beats/:id/publish
-   */
-  static async publishBeat(req, res) {
-    try {
-      const { id } = req.params;
-
-      const publishedBeat = await BeatService.publishBeat(id);
-
-      if (!publishedBeat) {
-        return res.status(404).json({
-          success: false,
-          message: 'Beat not found',
-        });
-      }
-
-      res.status(200).json({
-        success: true,
-        message: 'Beat published successfully',
-        data: publishedBeat,
-      });
-    } catch (error) {
-      logger.error(`Error in publishBeat controller: ${error.message}`);
-      res.status(500).json({
-        success: false,
-        message: 'Error publishing beat',
         error:
           process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
