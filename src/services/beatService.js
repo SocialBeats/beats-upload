@@ -114,32 +114,6 @@ export class BeatService {
   }
 
   /**
-   * Eliminar un beat (soft delete - cambiar status)
-   * @param {string} beatId - ID del beat a eliminar
-   * @returns {Promise<boolean>} true si se eliminó correctamente
-   */
-  static async deleteBeat(beatId) {
-    try {
-      const beat = await Beat.findByIdAndUpdate(
-        beatId,
-        { status: 'archived' },
-        { new: true }
-      );
-
-      if (!beat) {
-        logger.warn(`Beat not found for deletion: ${beatId}`);
-        return false;
-      }
-
-      logger.info(`Beat archived successfully: ${beatId}`);
-      return true;
-    } catch (error) {
-      logger.error(`Error archiving beat ${beatId}: ${error.message}`);
-      throw error;
-    }
-  }
-
-  /**
    * Eliminar permanentemente un beat
    * @param {string} beatId - ID del beat a eliminar
    * @returns {Promise<boolean>} true si se eliminó correctamente
@@ -202,7 +176,6 @@ export class BeatService {
           { tags: { $regex: searchTerm, $options: 'i' } },
           { description: { $regex: searchTerm, $options: 'i' } },
         ],
-        status: 'published',
         isPublic: true,
       };
 
@@ -250,25 +223,6 @@ export class BeatService {
       };
     } catch (error) {
       logger.error(`Error fetching beats stats: ${error.message}`);
-      throw error;
-    }
-  }
-
-  /**
-   * Publicar un beat
-   * @param {string} beatId - ID del beat a publicar
-   * @returns {Promise<Object|null>} Beat publicado
-   */
-  static async publishBeat(beatId) {
-    try {
-      const beat = await Beat.findByIdAndUpdate(
-        beatId,
-        { status: 'published', isPublic: true },
-        { new: true }
-      );
-      return beat;
-    } catch (error) {
-      logger.error(`Error publishing beat ${beatId}: ${error.message}`);
       throw error;
     }
   }

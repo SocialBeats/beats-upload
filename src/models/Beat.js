@@ -128,13 +128,6 @@ const beatSchema = new mongoose.Schema(
       },
     },
 
-    // Estado y visibilidad
-    status: {
-      type: String,
-      enum: ['draft', 'published', 'archived'],
-      default: 'draft',
-    },
-
     isPublic: {
       type: Boolean,
       default: true,
@@ -150,12 +143,6 @@ const beatSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User', // Referencia al modelo User
       required: false, // Por ahora opcional
-    },
-
-    // Timestamps automáticos
-    uploadedAt: {
-      type: Date,
-      default: Date.now,
     },
   },
   {
@@ -176,7 +163,7 @@ beatSchema.index({ artist: 1, createdAt: -1 });
 beatSchema.index({ genre: 1, bpm: 1 });
 beatSchema.index({ tags: 1 });
 beatSchema.index({ 'stats.plays': -1 });
-beatSchema.index({ status: 1, isPublic: 1 });
+beatSchema.index({ isPublic: 1 });
 
 // Virtual para el URL completo del beat
 beatSchema.virtual('fullUrl').get(function () {
@@ -205,7 +192,7 @@ beatSchema.pre('save', function (next) {
 
 // Método estático para buscar beats por filtros
 beatSchema.statics.findWithFilters = function (filters = {}) {
-  const query = { status: 'published', isPublic: true };
+  const query = { isPublic: true };
 
   if (filters.genre) query.genre = filters.genre;
   if (filters.artist) query.artist = new RegExp(filters.artist, 'i');

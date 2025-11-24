@@ -93,15 +93,6 @@ components:
               type: number
             downloads:
               type: number
-        status:
-          type: string
-          enum:
-            - draft
-            - published
-            - archived
-        createdAt:
-          type: string
-          format: date-time
         updatedAt:
           type: string
           format: date-time
@@ -562,7 +553,7 @@ paths:
       tags:
         - Beats
       summary: Eliminar un beat
-      description: Elimina un beat (soft delete - cambia status a archived)
+      description: Elimina un beat permanentemente de la base de datos.
       parameters:
         - in: path
           name: id
@@ -622,39 +613,6 @@ paths:
                         type: string
                       plays:
                         type: number
-        '404':
-          description: Beat no encontrado
-  /api/v1/beats/{id}/publish:
-    post:
-      tags:
-        - Beats
-      summary: Publicar beat
-      description: Cambia el estado del beat a 'published'
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: string
-          description: ID del beat
-      responses:
-        '200':
-          description: Beat publicado exitosamente
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: Beat published successfully
-                  data:
-                    $ref: '#/components/schemas/Beat'
-        '400':
-          description: ID de beat inválido
         '404':
           description: Beat no encontrado
   /api/v1/health:
