@@ -10,6 +10,7 @@ import verifyToken from './src/middlewares/authMiddlewares.js';
 // import your routes here
 import aboutRoutes from './src/routes/aboutRoutes.js';
 import healthRoutes from './src/routes/healthRoutes.js';
+import beatRoutes from './src/routes/beatRoutes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,6 +29,7 @@ app.use(verifyToken);
 // add your routes here like this:
 aboutRoutes(app);
 healthRoutes(app);
+app.use('/api/v1/beats', beatRoutes);
 
 // Export app for tests. Do not remove this line
 export default app;
@@ -39,7 +41,7 @@ if (process.env.NODE_ENV !== 'test') {
     logger.warn(`Using log level: ${process.env.LOG_LEVEL}`);
     logger.info(`API running at http://localhost:${PORT}`);
     logger.info(`Health at http://localhost:${PORT}/api/v1/health`);
-    logger.info(`API docs running at http://localhost:${PORT}/api/v1/docs`);
+    logger.info(`API docs running at http://localhost:${PORT}/api/v1/docs/`);
     logger.info(`Environment: ${process.env.NODE_ENV}`);
   });
 }
