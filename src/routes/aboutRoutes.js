@@ -25,7 +25,7 @@ export default function aboutRoutes(app) {
       },
       servers: [
         {
-          url: 'http://localhost:3000',
+          url: process.env.PUBLIC_URL || '/',
         },
       ],
       components: {
