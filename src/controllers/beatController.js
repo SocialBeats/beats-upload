@@ -6,6 +6,67 @@ import logger from '../../logger.js';
  */
 export class BeatController {
   /**
+   * UPLOAD URL - Generate presigned URL for direct S3 upload
+   * POST /api/v1/beats/upload-url
+   */
+  static async getUploadUrl(req, res) {
+    try {
+      const { extension, mimetype, size } = req.body;
+
+      // Validaciones básicas
+      if (!extension || !mimetype) {
+        return res.status(400).json({
+          success: false,
+          message: 'Extension and mimetype are required',
+        });
+      }
+
+      // Validar tamaño (máximo 50MB)
+      const maxSize = 50 * 1024 * 1024; // 50MB
+      if (size && size > maxSize) {
+        return res.status(400).json({
+          success: false,
+          message: `File size exceeds maximum allowed (${maxSize / 1024 / 1024}MB)`,
+        });
+      }
+
+      // Obtener userId del usuario autenticado (si existe)
+      const userId = req.user?.id || 'anonymous';
+
+      const result = await BeatService.generatePresignedUploadUrl({
+        extension: extension.replace('.', ''), // Remove leading dot if present
+        mimetype,
+        userId,
+      });
+
+      logger.info(`Upload URL generated for user: ${userId}`);
+
+      res.status(200).json({
+        success: true,
+        message: 'Upload URL generated successfully',
+        data: result,
+      });
+    } catch (error) {
+      logger.error(`Error in getUploadUrl controller: ${error.message}`);
+
+      // Handle validation errors from service
+      if (error.message.includes('Invalid')) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      res.status(500).json({
+        success: false,
+        message: 'Error generating upload URL',
+        error:
+          process.env.NODE_ENV === 'development' ? error.message : undefined,
+      });
+    }
+  }
+
+  /**
    * CREATE - Crear un nuevo beat
    * POST /api/v1/beats
    */
