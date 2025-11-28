@@ -1,7 +1,84 @@
 import { Beat } from '../models/index.js';
 import logger from '../../logger.js';
+import {
+  S3Client,
+  DeleteObjectCommand,
+  PutObjectCommand,
+} from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { randomUUID } from 'crypto';
+
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
+});
 
 export class BeatService {
+  /**
+   * Generate presigned URL for direct S3 upload
+   * @param {Object} params - Upload parameters
+   * @param {string} params.extension - File extension (mp3, wav, etc.)
+   * @param {string} params.mimetype - MIME type of the file
+   * @param {string} params.userId - User ID for folder structure
+   * @returns {Promise<Object>} Presigned URL and s3Key
+   */
+  static async generatePresignedUploadUrl({ extension, mimetype, userId }) {
+    try {
+      // Validate extension
+      const allowedExtensions = ['mp3', 'wav', 'flac', 'aac'];
+      if (!allowedExtensions.includes(extension.toLowerCase())) {
+        throw new Error(
+          `Invalid file extension. Allowed: ${allowedExtensions.join(', ')}`
+        );
+      }
+
+      // Validate MIME type
+      const allowedMimeTypes = [
+        'audio/mpeg',
+        'audio/wav',
+        'audio/x-wav',
+        'audio/flac',
+        'audio/aac',
+        'audio/x-m4a',
+      ];
+      if (!allowedMimeTypes.includes(mimetype.toLowerCase())) {
+        throw new Error(
+          `Invalid MIME type. Expected audio format, got: ${mimetype}`
+        );
+      }
+
+      // Generate unique filename with UUID v4
+      const uuid = randomUUID();
+      const s3Key = `users/${userId || 'anonymous'}/${uuid}.${extension}`;
+
+      // Create presigned PUT URL
+      const command = new PutObjectCommand({
+        Bucket: process.env.AWS_BUCKET_NAME,
+        Key: s3Key,
+        ContentType: mimetype,
+      });
+
+      // URL valid for 60 seconds
+      const uploadUrl = await getSignedUrl(s3Client, command, {
+        expiresIn: 60,
+      });
+
+      logger.info(`Presigned URL generated for: ${s3Key}`);
+
+      return {
+        uploadUrl,
+        s3Key,
+        expiresIn: 60,
+      };
+    } catch (error) {
+      logger.error(`Error generating presigned URL: ${error.message}`);
+      throw error;
+    }
+  }
+
   /**
    * Crear un nuevo beat
    * @param {Object} beatData - Datos del beat a crear
@@ -95,18 +172,45 @@ export class BeatService {
    */
   static async updateBeat(beatId, updateData) {
     try {
-      const beat = await Beat.findByIdAndUpdate(beatId, updateData, {
-        new: true, // Retorna el documento actualizado
-        runValidators: true, // Ejecuta las validaciones del schema
-      });
+      // 1. Obtener el beat original para saber si hay que borrar archivo viejo
+      const oldBeat = await Beat.findById(beatId);
 
-      if (!beat) {
+      if (!oldBeat) {
         logger.warn(`Beat not found for update: ${beatId}`);
         return null;
       }
 
+      // 2. Actualizar en Base de Datos PRIMERO
+      const updatedBeat = await Beat.findByIdAndUpdate(beatId, updateData, {
+        new: true, // Retorna el documento actualizado
+        runValidators: true, // Ejecuta las validaciones del schema
+      });
+
+      // 3. Si la actualización de BD fue exitosa Y cambió el archivo, borrar el viejo de S3
+      if (
+        updatedBeat &&
+        oldBeat.audio?.s3Key &&
+        updateData.audio?.s3Key &&
+        oldBeat.audio.s3Key !== updateData.audio.s3Key
+      ) {
+        try {
+          await s3Client.send(
+            new DeleteObjectCommand({
+              Bucket: process.env.AWS_BUCKET_NAME,
+              Key: oldBeat.audio.s3Key,
+            })
+          );
+          logger.info(`Old audio file deleted from S3: ${oldBeat.audio.s3Key}`);
+        } catch (s3Error) {
+          // No fallamos la request si falla S3, solo logueamos (archivo huérfano)
+          logger.error(
+            `Failed to delete old S3 file ${oldBeat.audio.s3Key}: ${s3Error.message}`
+          );
+        }
+      }
+
       logger.info(`Beat updated successfully: ${beatId}`);
-      return beat;
+      return updatedBeat;
     } catch (error) {
       logger.error(`Error updating beat ${beatId}: ${error.message}`);
       throw error;
@@ -120,11 +224,55 @@ export class BeatService {
    */
   static async deleteBeatPermanently(beatId) {
     try {
+      // 1. Buscar el beat para tener las keys de S3 antes de borrar
+      const beat = await Beat.findById(beatId);
+
+      if (!beat) {
+        logger.warn(`Beat not found for deletion: ${beatId}`);
+        return false;
+      }
+
+      // 2. Borrar de Base de Datos PRIMERO
       const result = await Beat.findByIdAndDelete(beatId);
 
       if (!result) {
-        logger.warn(`Beat not found for permanent deletion: ${beatId}`);
+        // Esto sería raro si ya lo encontramos, pero por concurrencia podría pasar
         return false;
+      }
+
+      // 3. Si se borró de BD, intentar borrar archivos de S3
+      // Audio
+      if (beat.audio?.s3Key) {
+        try {
+          await s3Client.send(
+            new DeleteObjectCommand({
+              Bucket: process.env.AWS_BUCKET_NAME,
+              Key: beat.audio.s3Key,
+            })
+          );
+          logger.info(`S3 Object deleted: ${beat.audio.s3Key}`);
+        } catch (s3Error) {
+          logger.error(
+            `Failed to delete S3 file ${beat.audio.s3Key}: ${s3Error.message}`
+          );
+        }
+      }
+
+      // Cover (si existe)
+      if (beat.audio?.s3CoverKey) {
+        try {
+          await s3Client.send(
+            new DeleteObjectCommand({
+              Bucket: process.env.AWS_BUCKET_NAME,
+              Key: beat.audio.s3CoverKey,
+            })
+          );
+          logger.info(`S3 Cover deleted: ${beat.audio.s3CoverKey}`);
+        } catch (s3Error) {
+          logger.error(
+            `Failed to delete S3 cover ${beat.audio.s3CoverKey}: ${s3Error.message}`
+          );
+        }
       }
 
       logger.info(`Beat permanently deleted: ${beatId}`);

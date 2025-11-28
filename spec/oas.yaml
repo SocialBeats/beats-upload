@@ -280,6 +280,79 @@ paths:
                 example: >-
                   There was an error retrieving API release notes: ENOENT: no
                   such file or directory, open 'CHANGELOG.md'
+  /api/v1/beats/upload-url:
+    post:
+      tags:
+        - Beats
+      summary: Generate presigned URL for S3 upload
+      description: >
+        Generates a presigned URL for direct upload of audio files to S3.
+
+        The URL is valid for 60 seconds. After uploading to S3, use the returned
+        s3Key 
+
+        to create the beat via POST /api/v1/beats.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - extension
+                - mimetype
+              properties:
+                extension:
+                  type: string
+                  enum:
+                    - mp3
+                    - wav
+                    - flac
+                    - aac
+                  example: mp3
+                  description: File extension without the dot
+                mimetype:
+                  type: string
+                  example: audio/mpeg
+                  description: MIME type of the audio file
+                size:
+                  type: number
+                  example: 5242880
+                  description: File size in bytes (max 50MB)
+      responses:
+        '200':
+          description: Presigned URL generated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Upload URL generated successfully
+                  data:
+                    type: object
+                    properties:
+                      uploadUrl:
+                        type: string
+                        example: >-
+                          https://social-beats-storage.s3.eu-north-1.amazonaws.com/users/anonymous/abc-123.mp3?X-Amz-...
+                        description: Presigned URL for PUT request to S3
+                      s3Key:
+                        type: string
+                        example: users/anonymous/abc-123.mp3
+                        description: S3 key to use when creating the beat
+                      expiresIn:
+                        type: number
+                        example: 60
+                        description: URL expiration time in seconds
+        '400':
+          description: Invalid request (missing fields, invalid file type, size exceeded)
+        '500':
+          description: Server error generating presigned URL
   /api/v1/beats:
     post:
       tags:
