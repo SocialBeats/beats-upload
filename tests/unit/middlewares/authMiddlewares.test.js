@@ -1,8 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-// import verifyToken from '../../../src/middlewares/authMiddlewares.js';
-import jwt from 'jsonwebtoken';
-
-vi.mock('jsonwebtoken');
 
 describe('Auth Middleware', () => {
   let req, res, next;
@@ -17,6 +13,7 @@ describe('Auth Middleware', () => {
 
     req = {
       path: '',
+      method: 'GET',
       headers: {},
     };
     res = {
@@ -24,7 +21,6 @@ describe('Auth Middleware', () => {
       json: vi.fn(),
     };
     next = vi.fn();
-    process.env.JWT_SECRET = 'test-secret';
   });
 
   it('should allow open paths without token', () => {
@@ -34,10 +30,28 @@ describe('Auth Middleware', () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
-  it('should allow beats path without token', () => {
+  it('should allow public GET paths without token', () => {
     req.path = '/api/v1/beats';
+    req.method = 'GET';
     verifyToken(req, res, next);
     expect(next).toHaveBeenCalled();
+  });
+
+  it('should populate user in public GET paths if headers are present', () => {
+    req.path = '/api/v1/beats';
+    req.method = 'GET';
+    req.headers['x-gateway-authenticated'] = 'true';
+    req.headers['x-user-id'] = 'user123';
+    req.headers['x-roles'] = 'admin,user';
+
+    verifyToken(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(req.user).toEqual({
+      id: 'user123',
+      'x-user-id': 'user123',
+      roles: ['admin', 'user'],
+    });
   });
 
   it('should return 400 if version is missing', () => {
@@ -51,44 +65,55 @@ describe('Auth Middleware', () => {
     );
   });
 
-  it('should return 401 if token is missing for protected route', () => {
+  it('should return 401 if gateway auth header is missing for protected route', () => {
     req.path = '/api/v1/protected';
+    req.method = 'POST';
     verifyToken(req, res, next);
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: 'Missing token',
+        message:
+          'Authentication required. Request must come through the API Gateway.',
       })
     );
   });
 
-  it('should return 403 if token is invalid', () => {
+  it('should return 401 if gateway auth header is false', () => {
     req.path = '/api/v1/protected';
-    req.headers.authorization = 'Bearer invalid-token';
-    jwt.verify.mockImplementation(() => {
-      throw new Error('Invalid token');
-    });
-
+    req.method = 'POST';
+    req.headers['x-gateway-authenticated'] = 'false';
     verifyToken(req, res, next);
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
 
-    expect(res.status).toHaveBeenCalledWith(403);
+  it('should return 401 if user id header is missing', () => {
+    req.path = '/api/v1/protected';
+    req.method = 'POST';
+    req.headers['x-gateway-authenticated'] = 'true';
+    verifyToken(req, res, next);
+    expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: 'Invalid or expired token',
+        message: 'Missing user identification',
       })
     );
   });
 
-  it('should call next and set user if token is valid', () => {
+  it('should call next and set user if headers are valid', () => {
     req.path = '/api/v1/protected';
-    req.headers.authorization = 'Bearer valid-token';
-    const mockUser = { id: 'user123' };
-    jwt.verify.mockReturnValue(mockUser);
+    req.method = 'POST';
+    req.headers['x-gateway-authenticated'] = 'true';
+    req.headers['x-user-id'] = 'user123';
+    req.headers['x-roles'] = 'user';
 
     verifyToken(req, res, next);
 
-    expect(jwt.verify).toHaveBeenCalledWith('valid-token', 'test-secret');
-    expect(req.user).toEqual(mockUser);
+    expect(req.user).toEqual({
+      id: 'user123',
+      'x-user-id': 'user123',
+      username: 'user123',
+      roles: ['user'],
+    });
     expect(next).toHaveBeenCalled();
   });
 });
