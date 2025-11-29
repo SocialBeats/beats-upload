@@ -10,13 +10,6 @@ const beatSchema = new mongoose.Schema(
       maxlength: [100, 'Title cannot exceed 100 characters'],
     },
 
-    artist: {
-      type: String,
-      required: [true, 'Artist is required'],
-      trim: true,
-      maxlength: [50, 'Artist name cannot exceed 50 characters'],
-    },
-
     // Características musicales
     genre: {
       type: String,
@@ -141,11 +134,21 @@ const beatSchema = new mongoose.Schema(
       default: false,
     },
 
-    // Información del creador (referencia a User si tienes autenticación)
+    // Información del creador (desnormalizada para microservicios)
     createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User', // Referencia al modelo User
-      required: false, // Por ahora opcional
+      userId: {
+        type: String, // ID del usuario del microservicio de auth
+        required: false, // Opcional para beats anónimos
+      },
+      username: {
+        type: String, // Nombre de usuario para mostrar sin hacer llamadas al otro servicio
+        trim: true,
+      },
+      roles: [
+        {
+          type: String, // Roles del usuario para validaciones rápidas
+        },
+      ],
     },
   },
   {
@@ -162,7 +165,7 @@ const beatSchema = new mongoose.Schema(
 );
 
 // Índices para mejorar consultas
-beatSchema.index({ artist: 1, createdAt: -1 });
+beatSchema.index({ 'createdBy.userId': 1, createdAt: -1 });
 beatSchema.index({ genre: 1, bpm: 1 });
 beatSchema.index({ tags: 1 });
 beatSchema.index({ 'stats.plays': -1 });
@@ -214,7 +217,6 @@ beatSchema.statics.findWithFilters = function (filters = {}) {
   const query = { isPublic: true };
 
   if (filters.genre) query.genre = filters.genre;
-  if (filters.artist) query.artist = new RegExp(filters.artist, 'i');
   if (filters.minBpm) query.bpm = { ...query.bpm, $gte: filters.minBpm };
   if (filters.maxBpm) query.bpm = { ...query.bpm, $lte: filters.maxBpm };
   if (filters.tags) query.tags = { $in: filters.tags };

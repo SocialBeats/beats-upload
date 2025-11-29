@@ -74,9 +74,13 @@ export class BeatController {
     try {
       const beatData = req.body;
 
-      // Agregar información adicional si está disponible
+      // Agregar información del usuario autenticado (viene de headers x-user-id, x-roles)
       if (req.user) {
-        beatData.createdBy = req.user.id;
+        beatData.createdBy = {
+          userId: req.user.id, // Este valor viene del header x-user-id
+          username: req.user.username || req.user.id,
+          roles: req.user.roles || [],
+        };
       }
 
       const newBeat = await BeatService.createBeat(beatData);
@@ -132,7 +136,6 @@ export class BeatController {
         sortBy = 'createdAt',
         sortOrder = 'desc',
         genre,
-        artist,
         minBpm,
         maxBpm,
         tags,
@@ -141,7 +144,6 @@ export class BeatController {
 
       const filters = {};
       if (genre) filters.genre = genre;
-      if (artist) filters.artist = artist;
       if (minBpm) filters.minBpm = parseInt(minBpm);
       if (maxBpm) filters.maxBpm = parseInt(maxBpm);
       if (tags) filters.tags = tags.split(',');
@@ -180,15 +182,20 @@ export class BeatController {
    */
   static async getBeatById(req, res) {
     try {
-      const { id } = req.params;
+      // Si el middleware requireBeatAccess ya cargó el beat, usarlo
+      let beat = req.beat;
 
-      const beat = await BeatService.getBeatById(id);
-
+      // Si no, cargarlo (para compatibilidad con rutas sin middleware)
       if (!beat) {
-        return res.status(404).json({
-          success: false,
-          message: 'Beat not found',
-        });
+        const { id } = req.params;
+        beat = await BeatService.getBeatById(id);
+
+        if (!beat) {
+          return res.status(404).json({
+            success: false,
+            message: 'Beat not found',
+          });
+        }
       }
 
       res.status(200).json({
@@ -228,6 +235,7 @@ export class BeatController {
       // Remover campos que no se deben actualizar directamente
       delete updateData._id;
       delete updateData.createdAt;
+      delete updateData.createdBy; // No permitir cambiar el creador
       delete updateData.stats; // Las stats se actualizan por métodos específicos
 
       const updatedBeat = await BeatService.updateBeat(id, updateData);
@@ -239,7 +247,7 @@ export class BeatController {
         });
       }
 
-      logger.info(`Beat updated via API: ${id}`);
+      logger.info(`Beat ${id} updated by user ${req.user?.id || 'unknown'}`);
 
       res.status(200).json({
         success: true,
@@ -293,7 +301,7 @@ export class BeatController {
         });
       }
 
-      logger.info(`Beat deleted via API: ${id}`);
+      logger.info(`Beat ${id} deleted by user ${req.user?.id || 'unknown'}`);
 
       res.status(200).json({
         success: true,
@@ -358,11 +366,13 @@ export class BeatController {
   /**
    * PLAY - Incrementar reproducciones
    * POST /api/v1/beats/:id/play
+   * Requiere autenticación. Si el beat es privado, solo el propietario puede reproducirlo.
    */
   static async playBeat(req, res) {
     try {
       const { id } = req.params;
 
+      // El middleware requireBeatAccess ya verificó permisos y cargó el beat
       const beat = await BeatService.incrementPlays(id);
 
       if (!beat) {
@@ -371,6 +381,8 @@ export class BeatController {
           message: 'Beat not found',
         });
       }
+
+      logger.info(`Beat ${id} played by user ${req.user.id}`);
 
       res.status(200).json({
         success: true,
