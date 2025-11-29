@@ -223,5 +223,307 @@ describe('BeatService', () => {
       expect(result).toBe(false);
       expect(Beat.findByIdAndDelete).not.toHaveBeenCalled();
     });
+
+    it('should handle S3 deletion errors gracefully for audio', async () => {
+      const mockBeat = {
+        _id: 'beat123',
+        audio: { s3Key: 'audio.mp3' },
+      };
+
+      Beat.findById = vi.fn().mockResolvedValue(mockBeat);
+      Beat.findByIdAndDelete = vi.fn().mockResolvedValue(mockBeat);
+
+      const s3Instance = new S3Client();
+      s3Instance.send.mockRejectedValueOnce(new Error('S3 Error'));
+
+      const result = await BeatService.deleteBeatPermanently('beat123');
+
+      expect(result).toBe(true); // Still returns true even if S3 fails
+    });
+
+    it('should handle S3 deletion errors gracefully for cover', async () => {
+      const mockBeat = {
+        _id: 'beat123',
+        audio: { s3Key: 'audio.mp3', s3CoverKey: 'cover.jpg' },
+      };
+
+      Beat.findById = vi.fn().mockResolvedValue(mockBeat);
+      Beat.findByIdAndDelete = vi.fn().mockResolvedValue(mockBeat);
+
+      const s3Instance = new S3Client();
+      s3Instance.send
+        .mockResolvedValueOnce({}) // Audio deletion succeeds
+        .mockRejectedValueOnce(new Error('S3 Cover Error')); // Cover deletion fails
+
+      const result = await BeatService.deleteBeatPermanently('beat123');
+
+      expect(result).toBe(true);
+    });
+
+    it('should return false if findByIdAndDelete returns null', async () => {
+      const mockBeat = {
+        _id: 'beat123',
+        audio: { s3Key: 'audio.mp3' },
+      };
+
+      Beat.findById = vi.fn().mockResolvedValue(mockBeat);
+      Beat.findByIdAndDelete = vi.fn().mockResolvedValue(null);
+
+      const result = await BeatService.deleteBeatPermanently('beat123');
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('incrementPlays', () => {
+    it('should increment plays for a beat', async () => {
+      const mockBeat = {
+        _id: 'beat123',
+        incrementPlays: vi.fn().mockResolvedValue({ stats: { plays: 1 } }),
+      };
+
+      Beat.findById = vi.fn().mockResolvedValue(mockBeat);
+
+      const result = await BeatService.incrementPlays('beat123');
+
+      expect(Beat.findById).toHaveBeenCalledWith('beat123');
+      expect(mockBeat.incrementPlays).toHaveBeenCalled();
+      expect(result.stats.plays).toBe(1);
+    });
+
+    it('should return null if beat not found', async () => {
+      Beat.findById = vi.fn().mockResolvedValue(null);
+
+      const result = await BeatService.incrementPlays('beat123');
+
+      expect(result).toBeNull();
+    });
+
+    it('should throw error on database failure', async () => {
+      Beat.findById = vi.fn().mockRejectedValue(new Error('DB Error'));
+
+      await expect(BeatService.incrementPlays('beat123')).rejects.toThrow(
+        'DB Error'
+      );
+    });
+  });
+
+  describe('searchBeats', () => {
+    it('should search beats by term', async () => {
+      const mockBeats = [{ title: 'Hip Hop Beat' }];
+      const mockQuery = {
+        skip: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        sort: vi.fn().mockResolvedValue(mockBeats),
+      };
+
+      Beat.find = vi.fn().mockReturnValue(mockQuery);
+
+      const result = await BeatService.searchBeats('Hip Hop', {
+        page: 1,
+        limit: 10,
+      });
+
+      expect(Beat.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          $or: expect.arrayContaining([
+            expect.objectContaining({ title: expect.anything() }),
+          ]),
+          isPublic: true,
+        })
+      );
+      expect(result).toEqual(mockBeats);
+    });
+
+    it('should handle search errors', async () => {
+      Beat.find = vi.fn().mockImplementation(() => {
+        throw new Error('Search Error');
+      });
+
+      await expect(
+        BeatService.searchBeats('test', { page: 1, limit: 10 })
+      ).rejects.toThrow('Search Error');
+    });
+  });
+
+  describe('getBeatsStats', () => {
+    it('should return beats statistics', async () => {
+      const mockStats = [
+        {
+          _id: null,
+          totalBeats: 100,
+          totalPlays: 5000,
+          totalDownloads: 500,
+          avgDuration: 180,
+        },
+      ];
+      const mockGenreStats = [
+        { _id: 'Hip Hop', count: 40 },
+        { _id: 'Trap', count: 35 },
+      ];
+
+      Beat.aggregate = vi
+        .fn()
+        .mockResolvedValueOnce(mockStats)
+        .mockResolvedValueOnce(mockGenreStats);
+
+      const result = await BeatService.getBeatsStats();
+
+      expect(Beat.aggregate).toHaveBeenCalledTimes(2);
+      expect(result.general).toEqual(mockStats[0]);
+      expect(result.genres).toEqual(mockGenreStats);
+    });
+
+    it('should return empty general stats if no beats exist', async () => {
+      Beat.aggregate = vi
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+
+      const result = await BeatService.getBeatsStats();
+
+      expect(result.general).toEqual({});
+      expect(result.genres).toEqual([]);
+    });
+
+    it('should handle stats errors', async () => {
+      Beat.aggregate = vi.fn().mockRejectedValue(new Error('Stats Error'));
+
+      await expect(BeatService.getBeatsStats()).rejects.toThrow('Stats Error');
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should handle createBeat errors', async () => {
+      const saveMock = vi.fn().mockRejectedValue(new Error('Save Error'));
+      Beat.mockImplementation(function () {
+        return { save: saveMock };
+      });
+
+      await expect(BeatService.createBeat({ title: 'Test' })).rejects.toThrow(
+        'Save Error'
+      );
+    });
+
+    it('should handle getAllBeats errors', async () => {
+      Beat.findWithFilters = vi.fn().mockImplementation(() => {
+        throw new Error('Query Error');
+      });
+
+      await expect(BeatService.getAllBeats()).rejects.toThrow('Query Error');
+    });
+
+    it('should handle getBeatById errors', async () => {
+      Beat.findById = vi.fn().mockRejectedValue(new Error('Find Error'));
+
+      await expect(BeatService.getBeatById('beat123')).rejects.toThrow(
+        'Find Error'
+      );
+    });
+
+    it('should handle updateBeat errors', async () => {
+      Beat.findById = vi.fn().mockRejectedValue(new Error('Update Error'));
+
+      await expect(
+        BeatService.updateBeat('beat123', { title: 'New Title' })
+      ).rejects.toThrow('Update Error');
+    });
+
+    it('should handle deleteBeatPermanently errors', async () => {
+      Beat.findById = vi.fn().mockRejectedValue(new Error('Delete Error'));
+
+      await expect(
+        BeatService.deleteBeatPermanently('beat123')
+      ).rejects.toThrow('Delete Error');
+    });
+
+    it('should handle S3 errors during update gracefully', async () => {
+      const oldBeat = { _id: 'beat123', audio: { s3Key: 'old.mp3' } };
+      const updatedBeat = { _id: 'beat123', audio: { s3Key: 'new.mp3' } };
+
+      Beat.findById = vi.fn().mockResolvedValue(oldBeat);
+      Beat.findByIdAndUpdate = vi.fn().mockResolvedValue(updatedBeat);
+
+      const s3Instance = new S3Client();
+      s3Instance.send.mockRejectedValueOnce(new Error('S3 Delete Failed'));
+
+      const result = await BeatService.updateBeat('beat123', {
+        audio: { s3Key: 'new.mp3' },
+      });
+
+      // Should still return updated beat even if S3 deletion fails
+      expect(result).toEqual(updatedBeat);
+    });
+  });
+
+  describe('Edge Cases', () => {
+    it('should handle anonymous user in generatePresignedUploadUrl', async () => {
+      getSignedUrl.mockResolvedValue('https://presigned-url.com');
+
+      const result = await BeatService.generatePresignedUploadUrl({
+        extension: 'mp3',
+        mimetype: 'audio/mpeg',
+        userId: null,
+      });
+
+      expect(result.s3Key).toContain('users/anonymous/');
+    });
+
+    it('should handle case-insensitive extension validation', async () => {
+      getSignedUrl.mockResolvedValue('https://presigned-url.com');
+
+      const result = await BeatService.generatePresignedUploadUrl({
+        extension: 'MP3',
+        mimetype: 'audio/mpeg',
+        userId: 'user123',
+      });
+
+      expect(result.s3Key).toContain('.MP3');
+    });
+
+    it('should handle case-insensitive mimetype validation', async () => {
+      getSignedUrl.mockResolvedValue('https://presigned-url.com');
+
+      const result = await BeatService.generatePresignedUploadUrl({
+        extension: 'wav',
+        mimetype: 'AUDIO/WAV',
+        userId: 'user123',
+      });
+
+      expect(result).toHaveProperty('uploadUrl');
+    });
+
+    it('should accept alternative audio mimetypes', async () => {
+      getSignedUrl.mockResolvedValue('https://presigned-url.com');
+
+      // Test audio/x-wav
+      await expect(
+        BeatService.generatePresignedUploadUrl({
+          extension: 'wav',
+          mimetype: 'audio/x-wav',
+          userId: 'user123',
+        })
+      ).resolves.toHaveProperty('uploadUrl');
+
+      // Test audio/x-m4a
+      await expect(
+        BeatService.generatePresignedUploadUrl({
+          extension: 'aac',
+          mimetype: 'audio/x-m4a',
+          userId: 'user123',
+        })
+      ).resolves.toHaveProperty('uploadUrl');
+    });
+
+    it('should return null from updateBeat when beat not found', async () => {
+      Beat.findById = vi.fn().mockResolvedValue(null);
+
+      const result = await BeatService.updateBeat('beat123', {
+        title: 'New Title',
+      });
+
+      expect(result).toBeNull();
+      expect(Beat.findByIdAndUpdate).not.toHaveBeenCalled();
+    });
   });
 });
