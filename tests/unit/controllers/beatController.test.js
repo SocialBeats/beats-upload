@@ -17,6 +17,7 @@ vi.mock('../../../src/services/beatService.js', () => ({
     searchBeats: vi.fn(),
     incrementPlays: vi.fn(),
     getBeatsStats: vi.fn(),
+    getUserBeats: vi.fn(),
   },
 }));
 
@@ -630,6 +631,227 @@ describe('BeatController', () => {
       BeatService.incrementPlays.mockRejectedValue(new Error('DB Error'));
 
       await BeatController.playBeat(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          error: undefined,
+        })
+      );
+
+      process.env.NODE_ENV = originalEnv;
+    });
+  });
+
+  describe('getMyBeats', () => {
+    it('should return user beats successfully', async () => {
+      req.query = { page: '1', limit: '10' };
+      const mockResult = {
+        beats: [
+          {
+            _id: 'beat1',
+            title: 'My Beat 1',
+            createdBy: { userId: 'user123' },
+          },
+          {
+            _id: 'beat2',
+            title: 'My Beat 2',
+            createdBy: { userId: 'user123' },
+          },
+        ],
+        pagination: {
+          currentPage: 1,
+          totalPages: 2,
+          totalBeats: 15,
+          hasNext: true,
+          hasPrev: false,
+        },
+        userId: 'user123',
+      };
+      BeatService.getUserBeats.mockResolvedValue(mockResult);
+
+      await BeatController.getMyBeats(req, res);
+
+      expect(BeatService.getUserBeats).toHaveBeenCalledWith(
+        'user123',
+        expect.objectContaining({
+          page: 1,
+          limit: 10,
+          sortBy: 'createdAt',
+          sortOrder: 'desc',
+          includePrivate: true,
+        })
+      );
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          message: 'User beats retrieved successfully',
+          data: mockResult.beats,
+          pagination: mockResult.pagination,
+          userId: mockResult.userId,
+        })
+      );
+    });
+
+    it('should handle includePrivate parameter correctly', async () => {
+      req.query = { includePrivate: 'false' };
+      const mockResult = {
+        beats: [],
+        pagination: { currentPage: 1, totalPages: 0, totalBeats: 0 },
+        userId: 'user123',
+      };
+      BeatService.getUserBeats.mockResolvedValue(mockResult);
+
+      await BeatController.getMyBeats(req, res);
+
+      expect(BeatService.getUserBeats).toHaveBeenCalledWith(
+        'user123',
+        expect.objectContaining({
+          includePrivate: false,
+        })
+      );
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it('should handle genre filter', async () => {
+      req.query = { genre: 'Hip Hop' };
+      const mockResult = {
+        beats: [],
+        pagination: { currentPage: 1, totalPages: 0, totalBeats: 0 },
+        userId: 'user123',
+      };
+      BeatService.getUserBeats.mockResolvedValue(mockResult);
+
+      await BeatController.getMyBeats(req, res);
+
+      expect(BeatService.getUserBeats).toHaveBeenCalledWith(
+        'user123',
+        expect.objectContaining({
+          genre: 'Hip Hop',
+        })
+      );
+    });
+
+    it('should handle BPM filters', async () => {
+      req.query = { minBpm: '120', maxBpm: '140' };
+      const mockResult = {
+        beats: [],
+        pagination: { currentPage: 1, totalPages: 0, totalBeats: 0 },
+        userId: 'user123',
+      };
+      BeatService.getUserBeats.mockResolvedValue(mockResult);
+
+      await BeatController.getMyBeats(req, res);
+
+      expect(BeatService.getUserBeats).toHaveBeenCalledWith(
+        'user123',
+        expect.objectContaining({
+          minBpm: 120,
+          maxBpm: 140,
+        })
+      );
+    });
+
+    it('should handle tags filter', async () => {
+      req.query = { tags: 'chill,summer,trap' };
+      const mockResult = {
+        beats: [],
+        pagination: { currentPage: 1, totalPages: 0, totalBeats: 0 },
+        userId: 'user123',
+      };
+      BeatService.getUserBeats.mockResolvedValue(mockResult);
+
+      await BeatController.getMyBeats(req, res);
+
+      expect(BeatService.getUserBeats).toHaveBeenCalledWith(
+        'user123',
+        expect.objectContaining({
+          tags: ['chill', 'summer', 'trap'],
+        })
+      );
+    });
+
+    it('should handle isFree filter', async () => {
+      req.query = { isFree: 'true' };
+      const mockResult = {
+        beats: [],
+        pagination: { currentPage: 1, totalPages: 0, totalBeats: 0 },
+        userId: 'user123',
+      };
+      BeatService.getUserBeats.mockResolvedValue(mockResult);
+
+      await BeatController.getMyBeats(req, res);
+
+      expect(BeatService.getUserBeats).toHaveBeenCalledWith(
+        'user123',
+        expect.objectContaining({
+          isFree: true,
+        })
+      );
+    });
+
+    it('should handle custom sorting', async () => {
+      req.query = { sortBy: 'title', sortOrder: 'asc' };
+      const mockResult = {
+        beats: [],
+        pagination: { currentPage: 1, totalPages: 0, totalBeats: 0 },
+        userId: 'user123',
+      };
+      BeatService.getUserBeats.mockResolvedValue(mockResult);
+
+      await BeatController.getMyBeats(req, res);
+
+      expect(BeatService.getUserBeats).toHaveBeenCalledWith(
+        'user123',
+        expect.objectContaining({
+          sortBy: 'title',
+          sortOrder: 'asc',
+        })
+      );
+    });
+
+    it('should enforce limit maximum of 50', async () => {
+      req.query = { limit: '100' };
+      const mockResult = {
+        beats: [],
+        pagination: { currentPage: 1, totalPages: 0, totalBeats: 0 },
+        userId: 'user123',
+      };
+      BeatService.getUserBeats.mockResolvedValue(mockResult);
+
+      await BeatController.getMyBeats(req, res);
+
+      expect(BeatService.getUserBeats).toHaveBeenCalledWith(
+        'user123',
+        expect.objectContaining({
+          limit: 50, // Should be capped at 50
+        })
+      );
+    });
+
+    it('should return 500 on generic error', async () => {
+      BeatService.getUserBeats.mockRejectedValue(new Error('DB Error'));
+
+      await BeatController.getMyBeats(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          message: 'Error retrieving user beats',
+        })
+      );
+    });
+
+    it('should return 500 on generic error in production', async () => {
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+
+      BeatService.getUserBeats.mockRejectedValue(new Error('DB Error'));
+
+      await BeatController.getMyBeats(req, res);
 
       expect(res.status).toHaveBeenCalledWith(500);
       expect(res.json).toHaveBeenCalledWith(

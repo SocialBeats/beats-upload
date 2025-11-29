@@ -561,6 +561,115 @@ paths:
           description: Búsqueda realizada exitosamente
         '400':
           description: Término de búsqueda inválido
+  /api/v1/beats/my-beats:
+    get:
+      tags:
+        - Beats
+      summary: Obtener mis beats
+      description: >-
+        Obtiene todos los beats del usuario autenticado (incluye beats
+        privados). Requiere autenticación a través del API Gateway.
+      security:
+        - gatewayAuth: []
+          userId: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+          description: Número de página
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 10
+            maximum: 50
+          description: Cantidad de elementos por página
+        - in: query
+          name: includePrivate
+          schema:
+            type: boolean
+            default: true
+          description: Incluir beats privados en los resultados
+        - in: query
+          name: genre
+          schema:
+            type: string
+          description: Filtrar por género
+        - in: query
+          name: minBpm
+          schema:
+            type: integer
+          description: BPM mínimo
+        - in: query
+          name: maxBpm
+          schema:
+            type: integer
+          description: BPM máximo
+        - in: query
+          name: tags
+          schema:
+            type: string
+          description: Filtrar por tags (separados por coma)
+        - in: query
+          name: isFree
+          schema:
+            type: boolean
+          description: Filtrar beats gratuitos/pagos
+        - in: query
+          name: sortBy
+          schema:
+            type: string
+            default: createdAt
+          description: Campo para ordenar
+        - in: query
+          name: sortOrder
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: desc
+          description: Orden de clasificación
+      responses:
+        '200':
+          description: Beats del usuario obtenidos exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: User beats retrieved successfully
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Beat'
+                  pagination:
+                    type: object
+                    properties:
+                      currentPage:
+                        type: integer
+                      totalPages:
+                        type: integer
+                      totalBeats:
+                        type: integer
+                      hasNext:
+                        type: boolean
+                      hasPrev:
+                        type: boolean
+                  userId:
+                    type: string
+                    description: ID del usuario propietario de los beats
+        '401':
+          description: No autenticado - falta header de autenticación del gateway
+        '500':
+          description: Error interno del servidor
   /api/v1/beats/stats:
     get:
       tags:

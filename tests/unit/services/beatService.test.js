@@ -346,6 +346,206 @@ describe('BeatService', () => {
     });
   });
 
+  describe('getUserBeats', () => {
+    it('should return user beats with pagination', async () => {
+      const mockBeats = [
+        {
+          _id: 'beat1',
+          title: 'User Beat 1',
+          createdBy: { userId: 'user123' },
+        },
+        {
+          _id: 'beat2',
+          title: 'User Beat 2',
+          createdBy: { userId: 'user123' },
+        },
+      ];
+      const mockQuery = {
+        skip: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        sort: vi.fn().mockResolvedValue(mockBeats),
+      };
+
+      Beat.find = vi.fn().mockReturnValue(mockQuery);
+      Beat.countDocuments = vi.fn().mockResolvedValue(10);
+
+      const result = await BeatService.getUserBeats('user123', {
+        page: 1,
+        limit: 10,
+      });
+
+      expect(Beat.find).toHaveBeenCalledWith({
+        'createdBy.userId': 'user123',
+      });
+      expect(result.beats).toEqual(mockBeats);
+      expect(result.pagination.totalBeats).toBe(10);
+      expect(result.userId).toBe('user123');
+    });
+
+    it('should include private beats by default', async () => {
+      const mockQuery = {
+        skip: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        sort: vi.fn().mockResolvedValue([]),
+      };
+
+      Beat.find = vi.fn().mockReturnValue(mockQuery);
+      Beat.countDocuments = vi.fn().mockResolvedValue(0);
+
+      await BeatService.getUserBeats('user123');
+
+      expect(Beat.find).toHaveBeenCalledWith({
+        'createdBy.userId': 'user123',
+      });
+    });
+
+    it('should exclude private beats when includePrivate is false', async () => {
+      const mockQuery = {
+        skip: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        sort: vi.fn().mockResolvedValue([]),
+      };
+
+      Beat.find = vi.fn().mockReturnValue(mockQuery);
+      Beat.countDocuments = vi.fn().mockResolvedValue(0);
+
+      await BeatService.getUserBeats('user123', { includePrivate: false });
+
+      expect(Beat.find).toHaveBeenCalledWith({
+        'createdBy.userId': 'user123',
+        isPublic: true,
+      });
+    });
+
+    it('should apply genre filter correctly', async () => {
+      const mockQuery = {
+        skip: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        sort: vi.fn().mockResolvedValue([]),
+      };
+
+      Beat.find = vi.fn().mockReturnValue(mockQuery);
+      Beat.countDocuments = vi.fn().mockResolvedValue(0);
+
+      await BeatService.getUserBeats('user123', { genre: 'Hip Hop' });
+
+      expect(Beat.find).toHaveBeenCalledWith({
+        'createdBy.userId': 'user123',
+        genre: 'Hip Hop',
+      });
+    });
+
+    it('should apply BPM filters correctly', async () => {
+      const mockQuery = {
+        skip: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        sort: vi.fn().mockResolvedValue([]),
+      };
+
+      Beat.find = vi.fn().mockReturnValue(mockQuery);
+      Beat.countDocuments = vi.fn().mockResolvedValue(0);
+
+      await BeatService.getUserBeats('user123', {
+        minBpm: 120,
+        maxBpm: 140,
+      });
+
+      expect(Beat.find).toHaveBeenCalledWith({
+        'createdBy.userId': 'user123',
+        bpm: { $gte: 120, $lte: 140 },
+      });
+    });
+
+    it('should apply tags filter correctly', async () => {
+      const mockQuery = {
+        skip: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        sort: vi.fn().mockResolvedValue([]),
+      };
+
+      Beat.find = vi.fn().mockReturnValue(mockQuery);
+      Beat.countDocuments = vi.fn().mockResolvedValue(0);
+
+      await BeatService.getUserBeats('user123', {
+        tags: ['chill', 'summer'],
+      });
+
+      expect(Beat.find).toHaveBeenCalledWith({
+        'createdBy.userId': 'user123',
+        tags: { $in: ['chill', 'summer'] },
+      });
+    });
+
+    it('should apply isFree filter correctly', async () => {
+      const mockQuery = {
+        skip: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        sort: vi.fn().mockResolvedValue([]),
+      };
+
+      Beat.find = vi.fn().mockReturnValue(mockQuery);
+      Beat.countDocuments = vi.fn().mockResolvedValue(0);
+
+      await BeatService.getUserBeats('user123', { isFree: true });
+
+      expect(Beat.find).toHaveBeenCalledWith({
+        'createdBy.userId': 'user123',
+        'pricing.isFree': true,
+      });
+    });
+
+    it('should handle custom sort options', async () => {
+      const mockQuery = {
+        skip: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        sort: vi.fn().mockResolvedValue([]),
+      };
+
+      Beat.find = vi.fn().mockReturnValue(mockQuery);
+      Beat.countDocuments = vi.fn().mockResolvedValue(0);
+
+      await BeatService.getUserBeats('user123', {
+        sortBy: 'title',
+        sortOrder: 'asc',
+      });
+
+      expect(mockQuery.sort).toHaveBeenCalledWith({ title: 1 });
+    });
+
+    it('should handle pagination correctly', async () => {
+      const mockQuery = {
+        skip: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        sort: vi.fn().mockResolvedValue([]),
+      };
+
+      Beat.find = vi.fn().mockReturnValue(mockQuery);
+      Beat.countDocuments = vi.fn().mockResolvedValue(25);
+
+      const result = await BeatService.getUserBeats('user123', {
+        page: 2,
+        limit: 10,
+      });
+
+      expect(mockQuery.skip).toHaveBeenCalledWith(10);
+      expect(mockQuery.limit).toHaveBeenCalledWith(10);
+      expect(result.pagination.currentPage).toBe(2);
+      expect(result.pagination.totalPages).toBe(3);
+      expect(result.pagination.hasNext).toBe(true);
+      expect(result.pagination.hasPrev).toBe(true);
+    });
+
+    it('should handle getUserBeats errors', async () => {
+      Beat.find = vi.fn().mockImplementation(() => {
+        throw new Error('Database Error');
+      });
+
+      await expect(
+        BeatService.getUserBeats('user123', { page: 1, limit: 10 })
+      ).rejects.toThrow('Database Error');
+    });
+  });
+
   describe('getBeatsStats', () => {
     it('should return beats statistics', async () => {
       const mockStats = [

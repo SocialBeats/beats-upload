@@ -343,6 +343,71 @@ export class BeatService {
   }
 
   /**
+   * Obtener beats del usuario autenticado
+   * @param {string} userId - ID del usuario
+   * @param {Object} options - Opciones de consulta
+   * @returns {Promise<Object>} Lista de beats del usuario con metadata
+   */
+  static async getUserBeats(userId, options = {}) {
+    try {
+      const {
+        page = 1,
+        limit = 10,
+        sortBy = 'createdAt',
+        sortOrder = 'desc',
+        includePrivate = true,
+        ...filters
+      } = options;
+
+      const skip = (page - 1) * limit;
+      const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
+
+      // Query base: beats del usuario
+      const baseQuery = { 'createdBy.userId': userId };
+
+      // Si no se incluyen privados, filtrar solo públicos
+      if (!includePrivate) {
+        baseQuery.isPublic = true;
+      }
+
+      // Aplicar filtros adicionales si se proporcionan
+      const query = { ...baseQuery };
+      if (filters.genre) query.genre = filters.genre;
+      if (filters.minBpm) query.bpm = { ...query.bpm, $gte: filters.minBpm };
+      if (filters.maxBpm) query.bpm = { ...query.bpm, $lte: filters.maxBpm };
+      if (filters.tags) query.tags = { $in: filters.tags };
+      if (filters.isFree !== undefined)
+        query['pricing.isFree'] = filters.isFree;
+
+      const [beats, totalBeats] = await Promise.all([
+        Beat.find(query).skip(skip).limit(parseInt(limit)).sort(sort),
+        Beat.countDocuments(query),
+      ]);
+
+      const totalPages = Math.ceil(totalBeats / limit);
+
+      logger.info(
+        `Retrieved ${beats.length} beats for user ${userId} (page ${page}/${totalPages})`
+      );
+
+      return {
+        beats,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages,
+          totalBeats,
+          hasNext: page < totalPages,
+          hasPrev: page > 1,
+        },
+        userId,
+      };
+    } catch (error) {
+      logger.error(`Error fetching user beats for ${userId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
    * Obtener estadísticas generales
    * @returns {Promise<Object>} Estadísticas de beats
    */
