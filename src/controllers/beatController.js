@@ -404,6 +404,63 @@ export class BeatController {
   }
 
   /**
+   * MY BEATS - Obtener beats del usuario autenticado
+   * GET /api/v1/beats/my-beats
+   */
+  static async getMyBeats(req, res) {
+    try {
+      const userId = req.user.id;
+
+      const {
+        page = 1,
+        limit = 10,
+        sortBy = 'createdAt',
+        sortOrder = 'desc',
+        includePrivate = 'true',
+        genre,
+        minBpm,
+        maxBpm,
+        tags,
+        isFree,
+      } = req.query;
+
+      const filters = {};
+      if (genre) filters.genre = genre;
+      if (minBpm) filters.minBpm = parseInt(minBpm);
+      if (maxBpm) filters.maxBpm = parseInt(maxBpm);
+      if (tags) filters.tags = tags.split(',');
+      if (isFree !== undefined) filters.isFree = isFree === 'true';
+
+      const options = {
+        page: parseInt(page),
+        limit: Math.min(parseInt(limit), 50), // Máximo 50 por página
+        sortBy,
+        sortOrder,
+        includePrivate: includePrivate === 'true',
+        ...filters,
+      };
+
+      const result = await BeatService.getUserBeats(userId, options);
+
+      res.status(200).json({
+        success: true,
+        message: 'User beats retrieved successfully',
+        data: result.beats,
+        pagination: result.pagination,
+        userId: result.userId,
+      });
+    } catch (error) {
+      logger.error(`Error in getMyBeats controller: ${error.message}`);
+      res.status(500).json({
+        success: false,
+        message: 'Error retrieving user beats',
+        error:
+          process.env.NODE_ENV === 'development' ? error.message : undefined,
+      });
+    }
+  }
+
+  /**
    * STATS - Obtener estadísticas generales
    * GET /api/v1/beats/stats
    */
