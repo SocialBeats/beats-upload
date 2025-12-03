@@ -61,6 +61,7 @@ describe('BeatController', () => {
       expect(BeatService.generatePresignedUploadUrl).toHaveBeenCalledWith({
         extension: 'mp3',
         mimetype: 'audio/mpeg',
+        size: undefined,
         userId: 'user123',
       });
       expect(res.status).toHaveBeenCalledWith(200);
@@ -83,6 +84,7 @@ describe('BeatController', () => {
       expect(BeatService.generatePresignedUploadUrl).toHaveBeenCalledWith({
         extension: 'mp3',
         mimetype: 'audio/mpeg',
+        size: undefined,
         userId: 'anonymous',
       });
       expect(res.status).toHaveBeenCalledWith(200);
@@ -90,6 +92,9 @@ describe('BeatController', () => {
 
     it('should return 400 if extension missing', async () => {
       req.body = { mimetype: 'audio/mpeg' };
+      BeatService.generatePresignedUploadUrl.mockRejectedValue(
+        new Error('Invalid file extension')
+      );
       await BeatController.getUploadUrl(req, res);
       expect(res.status).toHaveBeenCalledWith(400);
     });
@@ -100,6 +105,9 @@ describe('BeatController', () => {
         mimetype: 'audio/mpeg',
         size: 100 * 1024 * 1024,
       };
+      BeatService.generatePresignedUploadUrl.mockRejectedValue(
+        new Error('File size exceeds maximum allowed')
+      );
       await BeatController.getUploadUrl(req, res);
       expect(res.status).toHaveBeenCalledWith(400);
     });
@@ -386,12 +394,7 @@ describe('BeatController', () => {
 
       await BeatController.updateBeat(req, res);
 
-      expect(BeatService.updateBeat).toHaveBeenCalledWith(
-        'beat1',
-        expect.objectContaining({
-          title: 'Updated',
-        })
-      );
+      expect(BeatService.updateBeat).toHaveBeenCalledWith('beat1', req.body);
       expect(res.status).toHaveBeenCalledWith(200);
     });
 

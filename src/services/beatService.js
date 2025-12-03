@@ -4,6 +4,7 @@ import {
   S3Client,
   DeleteObjectCommand,
   PutObjectCommand,
+  GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'crypto';
@@ -16,6 +17,17 @@ const s3Client = new S3Client({
   },
 });
 
+const ALLOWED_EXTENSIONS = ['mp3', 'wav', 'flac', 'aac'];
+const ALLOWED_MIME_TYPES = [
+  'audio/mpeg',
+  'audio/wav',
+  'audio/x-wav',
+  'audio/flac',
+  'audio/aac',
+  'audio/x-m4a',
+];
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+
 export class BeatService {
   /**
    * Generate presigned URL for direct S3 upload
@@ -25,26 +37,29 @@ export class BeatService {
    * @param {string} params.userId - User ID for folder structure
    * @returns {Promise<Object>} Presigned URL and s3Key
    */
-  static async generatePresignedUploadUrl({ extension, mimetype, userId }) {
+  static async generatePresignedUploadUrl({
+    extension,
+    mimetype,
+    size,
+    userId,
+  }) {
     try {
-      // Validate extension
-      const allowedExtensions = ['mp3', 'wav', 'flac', 'aac'];
-      if (!allowedExtensions.includes(extension.toLowerCase())) {
+      // Validate size
+      if (size && size > MAX_FILE_SIZE) {
         throw new Error(
-          `Invalid file extension. Allowed: ${allowedExtensions.join(', ')}`
+          `File size exceeds maximum allowed (${MAX_FILE_SIZE / 1024 / 1024}MB)`
+        );
+      }
+
+      // Validate extension
+      if (!ALLOWED_EXTENSIONS.includes(extension.toLowerCase())) {
+        throw new Error(
+          `Invalid file extension. Allowed: ${ALLOWED_EXTENSIONS.join(', ')}`
         );
       }
 
       // Validate MIME type
-      const allowedMimeTypes = [
-        'audio/mpeg',
-        'audio/wav',
-        'audio/x-wav',
-        'audio/flac',
-        'audio/aac',
-        'audio/x-m4a',
-      ];
-      if (!allowedMimeTypes.includes(mimetype.toLowerCase())) {
+      if (!ALLOWED_MIME_TYPES.includes(mimetype.toLowerCase())) {
         throw new Error(
           `Invalid MIME type. Expected audio format, got: ${mimetype}`
         );
@@ -66,7 +81,7 @@ export class BeatService {
         expiresIn: 60,
       });
 
-      logger.info(`Presigned URL generated for: ${s3Key}`);
+      logger.info('Presigned URL generated', { s3Key, userId });
 
       return {
         uploadUrl,
@@ -74,7 +89,39 @@ export class BeatService {
         expiresIn: 60,
       };
     } catch (error) {
-      logger.error(`Error generating presigned URL: ${error.message}`);
+      logger.error('Error generating presigned URL', { error: error.message });
+      throw error;
+    }
+  }
+
+  /**
+   * Generate presigned URL for audio playback
+   * @param {string} beatId - ID of the beat
+   * @returns {Promise<string>} Presigned URL
+   */
+  static async getAudioPresignedUrl(beatId) {
+    try {
+      const beat = await Beat.findById(beatId);
+      if (!beat || !beat.audio?.s3Key) {
+        throw new Error('Beat or audio file not found');
+      }
+
+      // Return CloudFront URL
+      const cdnDomain = process.env.CDN_DOMAIN || '';
+      // Ensure we handle potential slash inconsistencies
+      const baseUrl = cdnDomain.endsWith('/')
+        ? cdnDomain.slice(0, -1)
+        : cdnDomain;
+      const key = beat.audio.s3Key.startsWith('/')
+        ? beat.audio.s3Key.slice(1)
+        : beat.audio.s3Key;
+
+      return `${baseUrl}/${key}`;
+    } catch (error) {
+      logger.error('Error generating audio URL', {
+        error: error.message,
+        beatId,
+      });
       throw error;
     }
   }
@@ -88,10 +135,50 @@ export class BeatService {
     try {
       const beat = new Beat(beatData);
       const savedBeat = await beat.save();
-      logger.info(`Beat created successfully: ${savedBeat._id}`);
+      logger.info('Beat created successfully', { beatId: savedBeat._id });
       return savedBeat;
     } catch (error) {
-      logger.error(`Error creating beat: ${error.message}`);
+      logger.error('Error creating beat', { error: error.message });
+
+      // Compensation: Delete uploaded files if DB save fails
+      if (beatData.audio?.s3Key) {
+        try {
+          await s3Client.send(
+            new DeleteObjectCommand({
+              Bucket: process.env.AWS_BUCKET_NAME,
+              Key: beatData.audio.s3Key,
+            })
+          );
+          logger.info('Compensated: Deleted orphaned S3 file', {
+            s3Key: beatData.audio.s3Key,
+          });
+        } catch (s3Error) {
+          logger.error('Failed to compensate S3 file deletion', {
+            s3Key: beatData.audio.s3Key,
+            error: s3Error.message,
+          });
+        }
+      }
+
+      if (beatData.audio?.s3CoverKey) {
+        try {
+          await s3Client.send(
+            new DeleteObjectCommand({
+              Bucket: process.env.AWS_BUCKET_NAME,
+              Key: beatData.audio.s3CoverKey,
+            })
+          );
+          logger.info('Compensated: Deleted orphaned S3 cover', {
+            s3Key: beatData.audio.s3CoverKey,
+          });
+        } catch (s3Error) {
+          logger.error('Failed to compensate S3 cover deletion', {
+            s3Key: beatData.audio.s3CoverKey,
+            error: s3Error.message,
+          });
+        }
+      }
+
       throw error;
     }
   }
@@ -122,24 +209,20 @@ export class BeatService {
         Beat.countDocuments(query.getQuery()),
       ]);
 
-      const totalPages = Math.ceil(totalBeats / limit);
+      const pagination = this._getPaginationMetadata(totalBeats, page, limit);
 
-      logger.info(
-        `Retrieved ${beats.length} beats (page ${page}/${totalPages})`
-      );
+      logger.info('Retrieved beats', {
+        count: beats.length,
+        page,
+        totalPages: pagination.totalPages,
+      });
 
       return {
         beats,
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages,
-          totalBeats,
-          hasNext: page < totalPages,
-          hasPrev: page > 1,
-        },
+        pagination,
       };
     } catch (error) {
-      logger.error(`Error fetching beats: ${error.message}`);
+      logger.error('Error fetching beats', { error: error.message });
       throw error;
     }
   }
@@ -153,13 +236,13 @@ export class BeatService {
     try {
       const beat = await Beat.findById(beatId);
       if (!beat) {
-        logger.warn(`Beat not found: ${beatId}`);
+        logger.warn('Beat not found', { beatId });
         return null;
       }
-      logger.info(`Beat retrieved: ${beatId}`);
+      logger.info('Beat retrieved', { beatId });
       return beat;
     } catch (error) {
-      logger.error(`Error fetching beat ${beatId}: ${error.message}`);
+      logger.error('Error fetching beat', { beatId, error: error.message });
       throw error;
     }
   }
@@ -172,19 +255,52 @@ export class BeatService {
    */
   static async updateBeat(beatId, updateData) {
     try {
+      // Remove protected fields
+      delete updateData._id;
+      delete updateData.createdAt;
+      delete updateData.createdBy;
+      delete updateData.stats;
+
       // 1. Obtener el beat original para saber si hay que borrar archivo viejo
       const oldBeat = await Beat.findById(beatId);
 
       if (!oldBeat) {
-        logger.warn(`Beat not found for update: ${beatId}`);
+        logger.warn('Beat not found for update', { beatId });
         return null;
       }
 
       // 2. Actualizar en Base de Datos PRIMERO
-      const updatedBeat = await Beat.findByIdAndUpdate(beatId, updateData, {
-        new: true, // Retorna el documento actualizado
-        runValidators: true, // Ejecuta las validaciones del schema
-      });
+      let updatedBeat;
+      try {
+        updatedBeat = await Beat.findByIdAndUpdate(beatId, updateData, {
+          new: true, // Retorna el documento actualizado
+          runValidators: true, // Ejecuta las validaciones del schema
+        });
+      } catch (dbError) {
+        // Compensation: If DB update fails, delete the NEW file if one was uploaded
+        if (
+          updateData.audio?.s3Key &&
+          updateData.audio.s3Key !== oldBeat.audio?.s3Key
+        ) {
+          try {
+            await s3Client.send(
+              new DeleteObjectCommand({
+                Bucket: process.env.AWS_BUCKET_NAME,
+                Key: updateData.audio.s3Key,
+              })
+            );
+            logger.info('Compensated: Deleted orphaned new S3 file', {
+              s3Key: updateData.audio.s3Key,
+            });
+          } catch (s3Error) {
+            logger.error('Failed to compensate new S3 file deletion', {
+              s3Key: updateData.audio.s3Key,
+              error: s3Error.message,
+            });
+          }
+        }
+        throw dbError;
+      }
 
       // 3. Si la actualización de BD fue exitosa Y cambió el archivo, borrar el viejo de S3
       if (
@@ -200,19 +316,22 @@ export class BeatService {
               Key: oldBeat.audio.s3Key,
             })
           );
-          logger.info(`Old audio file deleted from S3: ${oldBeat.audio.s3Key}`);
+          logger.info('Old audio file deleted from S3', {
+            s3Key: oldBeat.audio.s3Key,
+          });
         } catch (s3Error) {
           // No fallamos la request si falla S3, solo logueamos (archivo huérfano)
-          logger.error(
-            `Failed to delete old S3 file ${oldBeat.audio.s3Key}: ${s3Error.message}`
-          );
+          logger.error('Failed to delete old S3 file', {
+            s3Key: oldBeat.audio.s3Key,
+            error: s3Error.message,
+          });
         }
       }
 
-      logger.info(`Beat updated successfully: ${beatId}`);
+      logger.info('Beat updated successfully', { beatId });
       return updatedBeat;
     } catch (error) {
-      logger.error(`Error updating beat ${beatId}: ${error.message}`);
+      logger.error('Error updating beat', { beatId, error: error.message });
       throw error;
     }
   }
@@ -228,7 +347,7 @@ export class BeatService {
       const beat = await Beat.findById(beatId);
 
       if (!beat) {
-        logger.warn(`Beat not found for deletion: ${beatId}`);
+        logger.warn('Beat not found for deletion', { beatId });
         return false;
       }
 
@@ -250,11 +369,12 @@ export class BeatService {
               Key: beat.audio.s3Key,
             })
           );
-          logger.info(`S3 Object deleted: ${beat.audio.s3Key}`);
+          logger.info('S3 Object deleted', { s3Key: beat.audio.s3Key });
         } catch (s3Error) {
-          logger.error(
-            `Failed to delete S3 file ${beat.audio.s3Key}: ${s3Error.message}`
-          );
+          logger.error('Failed to delete S3 file', {
+            s3Key: beat.audio.s3Key,
+            error: s3Error.message,
+          });
         }
       }
 
@@ -267,20 +387,22 @@ export class BeatService {
               Key: beat.audio.s3CoverKey,
             })
           );
-          logger.info(`S3 Cover deleted: ${beat.audio.s3CoverKey}`);
+          logger.info('S3 Cover deleted', { s3Key: beat.audio.s3CoverKey });
         } catch (s3Error) {
-          logger.error(
-            `Failed to delete S3 cover ${beat.audio.s3CoverKey}: ${s3Error.message}`
-          );
+          logger.error('Failed to delete S3 cover', {
+            s3Key: beat.audio.s3CoverKey,
+            error: s3Error.message,
+          });
         }
       }
 
-      logger.info(`Beat permanently deleted: ${beatId}`);
+      logger.info('Beat permanently deleted', { beatId });
       return true;
     } catch (error) {
-      logger.error(
-        `Error permanently deleting beat ${beatId}: ${error.message}`
-      );
+      logger.error('Error permanently deleting beat', {
+        beatId,
+        error: error.message,
+      });
       throw error;
     }
   }
@@ -299,9 +421,10 @@ export class BeatService {
 
       return await beat.incrementPlays();
     } catch (error) {
-      logger.error(
-        `Error incrementing plays for beat ${beatId}: ${error.message}`
-      );
+      logger.error('Error incrementing plays', {
+        beatId,
+        error: error.message,
+      });
       throw error;
     }
   }
@@ -332,12 +455,13 @@ export class BeatService {
         .limit(parseInt(limit))
         .sort({ 'stats.plays': -1 });
 
-      logger.info(
-        `Search for "${searchTerm}" returned ${beats.length} results`
-      );
+      logger.info('Search completed', { searchTerm, count: beats.length });
       return beats;
     } catch (error) {
-      logger.error(`Error searching beats: ${error.message}`);
+      logger.error('Error searching beats', {
+        searchTerm,
+        error: error.message,
+      });
       throw error;
     }
   }
@@ -384,25 +508,25 @@ export class BeatService {
         Beat.countDocuments(query),
       ]);
 
-      const totalPages = Math.ceil(totalBeats / limit);
+      const pagination = this._getPaginationMetadata(totalBeats, page, limit);
 
-      logger.info(
-        `Retrieved ${beats.length} beats for user ${userId} (page ${page}/${totalPages})`
-      );
+      logger.info('Retrieved user beats', {
+        userId,
+        count: beats.length,
+        page,
+        totalPages: pagination.totalPages,
+      });
 
       return {
         beats,
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages,
-          totalBeats,
-          hasNext: page < totalPages,
-          hasPrev: page > 1,
-        },
+        pagination,
         userId,
       };
     } catch (error) {
-      logger.error(`Error fetching user beats for ${userId}: ${error.message}`);
+      logger.error('Error fetching user beats', {
+        userId,
+        error: error.message,
+      });
       throw error;
     }
   }
@@ -435,8 +559,19 @@ export class BeatService {
         genres: genreStats,
       };
     } catch (error) {
-      logger.error(`Error fetching beats stats: ${error.message}`);
+      logger.error('Error fetching beats stats', { error: error.message });
       throw error;
     }
+  }
+
+  static _getPaginationMetadata(totalItems, page, limit) {
+    const totalPages = Math.ceil(totalItems / limit);
+    return {
+      currentPage: parseInt(page),
+      totalPages,
+      totalBeats: totalItems,
+      hasNext: page < totalPages,
+      hasPrev: page > 1,
+    };
   }
 }

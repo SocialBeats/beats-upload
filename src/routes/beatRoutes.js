@@ -610,6 +610,29 @@ router.get('/stats', BeatController.getStats);
 
 /**
  * @swagger
+ * /api/v1/beats/{id}/audio:
+ *   get:
+ *     tags:
+ *       - Beats
+ *     summary: Stream audio
+ *     description: Redirects to a presigned S3 URL for audio playback
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Beat ID
+ *     responses:
+ *       302:
+ *         description: Redirect to S3
+ *       404:
+ *         description: Beat not found
+ */
+router.get('/:id/audio', BeatController.streamAudio);
+
+/**
+ * @swagger
  * /api/v1/beats/{id}:
  *   get:
  *     tags:

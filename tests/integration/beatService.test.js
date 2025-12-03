@@ -11,7 +11,7 @@ import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 // Remove static import
 // import { BeatService } from '../../src/services/beatService.js';
-import { Beat } from '../../src/models/index.js';
+// import { Beat } from '../../src/models/index.js';
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
 // Mock S3 Client
@@ -36,6 +36,7 @@ vi.mock('@aws-sdk/client-s3', () => {
 describe('BeatService Integration Tests (with S3)', () => {
   let mongoServer;
   let BeatService; // Dynamic import
+  let Beat; // Dynamic import
 
   beforeAll(async () => {
     // Set Env Vars
@@ -52,6 +53,9 @@ describe('BeatService Integration Tests (with S3)', () => {
 
     // Clear Mongoose models to avoid OverwriteModelError
     mongoose.models = {};
+
+    const modelsModule = await import('../../src/models/index.js');
+    Beat = modelsModule.Beat;
 
     const module = await import('../../src/services/beatService.js');
     BeatService = module.BeatService;
@@ -96,7 +100,7 @@ describe('BeatService Integration Tests (with S3)', () => {
   });
 
   describe('getBeatById', () => {
-    it('should return beat with virtual audioUrl', async () => {
+    it('should return beat by id', async () => {
       const beat = await Beat.create({
         title: 'CDN Test',
         artist: 'Test',
@@ -112,11 +116,8 @@ describe('BeatService Integration Tests (with S3)', () => {
       });
 
       const retrievedBeat = await BeatService.getBeatById(beat._id);
-      // Note: BeatService returns a Mongoose document.
-      // Virtuals are not direct properties of the document object unless toJSON/toObject is called or accessed directly.
-      expect(retrievedBeat.audioUrl).toBe(
-        `${process.env.CDN_DOMAIN}/beats/test.mp3`
-      );
+      expect(retrievedBeat.title).toBe('CDN Test');
+      expect(retrievedBeat.audio.s3Key).toBe('beats/test.mp3');
     });
   });
 
@@ -360,6 +361,84 @@ describe('BeatService Integration Tests (with S3)', () => {
       expect(stats.general.totalDownloads).toBe(15);
       expect(stats.general.avgDuration).toBe(150);
       expect(stats.genres).toHaveLength(2);
+    });
+  });
+
+  describe('Consistency & Compensation', () => {
+    it('should delete uploaded S3 file if createBeat fails', async () => {
+      const beatData = {
+        title: 'Fail Beat',
+        artist: 'Test',
+        genre: 'Pop',
+        bpm: 120,
+        duration: 120,
+        audio: {
+          s3Key: 'beats/fail.mp3',
+          filename: 'fail.mp3',
+          size: 1000,
+          format: 'mp3',
+        },
+      };
+
+      // Mock Beat.prototype.save to fail
+      vi.spyOn(Beat.prototype, 'save').mockRejectedValueOnce(
+        new Error('DB Error')
+      );
+
+      await expect(BeatService.createBeat(beatData)).rejects.toThrow(
+        'DB Error'
+      );
+
+      expect(mocks.DeleteObjectCommand).toHaveBeenCalledWith({
+        Bucket: process.env.AWS_BUCKET_NAME,
+        Key: 'beats/fail.mp3',
+      });
+      expect(mocks.send).toHaveBeenCalled();
+    });
+
+    it('should delete new S3 file if updateBeat fails', async () => {
+      const beat = await Beat.create({
+        title: 'Update Fail Test',
+        artist: 'Test',
+        genre: 'Pop',
+        bpm: 120,
+        duration: 120,
+        audio: {
+          s3Key: 'beats/original.mp3',
+          filename: 'original.mp3',
+          size: 1000,
+          format: 'mp3',
+        },
+      });
+
+      const updateData = {
+        audio: {
+          s3Key: 'beats/new-fail.mp3',
+          filename: 'new-fail.mp3',
+          size: 2000,
+          format: 'mp3',
+        },
+      };
+
+      // Mock Beat.findByIdAndUpdate to fail
+      vi.spyOn(Beat, 'findByIdAndUpdate').mockRejectedValueOnce(
+        new Error('DB Update Error')
+      );
+
+      await expect(
+        BeatService.updateBeat(beat._id, updateData)
+      ).rejects.toThrow('DB Update Error');
+
+      // Should delete the NEW file
+      expect(mocks.DeleteObjectCommand).toHaveBeenCalledWith({
+        Bucket: process.env.AWS_BUCKET_NAME,
+        Key: 'beats/new-fail.mp3',
+      });
+      // Should NOT delete the OLD file (because update failed)
+      expect(mocks.DeleteObjectCommand).not.toHaveBeenCalledWith({
+        Bucket: process.env.AWS_BUCKET_NAME,
+        Key: 'beats/original.mp3',
+      });
     });
   });
 });
