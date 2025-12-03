@@ -67,6 +67,7 @@ describe('BeatService', () => {
       const result = await BeatService.generatePresignedUploadUrl({
         extension: 'mp3',
         mimetype: 'audio/mpeg',
+        size: 1024 * 1024, // 1MB
         userId: 'user123',
       });
 
@@ -93,9 +94,59 @@ describe('BeatService', () => {
         BeatService.generatePresignedUploadUrl({
           extension: 'mp3',
           mimetype: 'application/json',
+          size: 1024,
           userId: 'user123',
         })
       ).rejects.toThrow('Invalid MIME type');
+    });
+
+    it('should throw error if file size exceeds limit', async () => {
+      await expect(
+        BeatService.generatePresignedUploadUrl({
+          extension: 'mp3',
+          mimetype: 'audio/mpeg',
+          size: 51 * 1024 * 1024, // 51MB
+          userId: 'user123',
+        })
+      ).rejects.toThrow('File size exceeds maximum allowed');
+    });
+  });
+
+  describe('getAudioPresignedUrl', () => {
+    const originalEnv = process.env;
+
+    beforeEach(() => {
+      process.env = { ...originalEnv, CDN_DOMAIN: 'https://cdn.example.com' };
+    });
+
+    afterEach(() => {
+      process.env = originalEnv;
+    });
+
+    it('should return CDN URL for valid beat', async () => {
+      const mockBeat = { _id: 'beat123', audio: { s3Key: 'audio.mp3' } };
+      Beat.findById = vi.fn().mockResolvedValue(mockBeat);
+
+      const result = await BeatService.getAudioPresignedUrl('beat123');
+
+      expect(Beat.findById).toHaveBeenCalledWith('beat123');
+      expect(result).toBe('https://cdn.example.com/audio.mp3');
+    });
+
+    it('should handle leading slash in s3Key', async () => {
+      const mockBeat = { _id: 'beat123', audio: { s3Key: '/audio.mp3' } };
+      Beat.findById = vi.fn().mockResolvedValue(mockBeat);
+
+      const result = await BeatService.getAudioPresignedUrl('beat123');
+
+      expect(result).toBe('https://cdn.example.com/audio.mp3');
+    });
+
+    it('should throw error if beat not found', async () => {
+      Beat.findById = vi.fn().mockResolvedValue(null);
+      await expect(BeatService.getAudioPresignedUrl('beat123')).rejects.toThrow(
+        'Beat or audio file not found'
+      );
     });
   });
 

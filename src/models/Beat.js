@@ -171,27 +171,6 @@ beatSchema.index({ tags: 1 });
 beatSchema.index({ 'stats.plays': -1 });
 beatSchema.index({ isPublic: 1 });
 
-// Virtual para el URL completo del beat
-beatSchema.virtual('fullUrl').get(function () {
-  return `${process.env.BASE_URL || 'http://localhost:3000'}/api/v1/beats/${this._id}`;
-});
-
-// Virtual for full CDN audio URL
-beatSchema.virtual('audioUrl').get(function () {
-  if (this.audio && this.audio.s3Key) {
-    return `${process.env.CDN_DOMAIN || ''}/${this.audio.s3Key}`;
-  }
-  return null;
-});
-
-// Virtual for full CDN cover URL
-beatSchema.virtual('coverUrl').get(function () {
-  if (this.audio && this.audio.s3CoverKey) {
-    return `${process.env.CDN_DOMAIN || ''}/${this.audio.s3CoverKey}`;
-  }
-  return null;
-});
-
 // Virtual para formatear duración en mm:ss
 beatSchema.virtual('formattedDuration').get(function () {
   const minutes = Math.floor(this.duration / 60);

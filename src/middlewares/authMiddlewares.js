@@ -7,6 +7,7 @@ const openPaths = [
   '/api/v1/about',
   '/api/v1/changelog',
   '/api/v1/version',
+  '/api/v1/beats/upload-url',
 ];
 
 // Rutas que permiten acceso sin autenticación (GET público)

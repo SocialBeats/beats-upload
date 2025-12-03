@@ -12,34 +12,16 @@ export class BeatController {
   static async getUploadUrl(req, res) {
     try {
       const { extension, mimetype, size } = req.body;
-
-      // Validaciones básicas
-      if (!extension || !mimetype) {
-        return res.status(400).json({
-          success: false,
-          message: 'Extension and mimetype are required',
-        });
-      }
-
-      // Validar tamaño (máximo 50MB)
-      const maxSize = 50 * 1024 * 1024; // 50MB
-      if (size && size > maxSize) {
-        return res.status(400).json({
-          success: false,
-          message: `File size exceeds maximum allowed (${maxSize / 1024 / 1024}MB)`,
-        });
-      }
-
-      // Obtener userId del usuario autenticado (si existe)
       const userId = req.user?.id || 'anonymous';
 
       const result = await BeatService.generatePresignedUploadUrl({
-        extension: extension.replace('.', ''), // Remove leading dot if present
+        extension: extension ? extension.replace('.', '') : '',
         mimetype,
+        size,
         userId,
       });
 
-      logger.info(`Upload URL generated for user: ${userId}`);
+      logger.info('Upload URL generated', { userId, extension, mimetype });
 
       res.status(200).json({
         success: true,
@@ -47,10 +29,15 @@ export class BeatController {
         data: result,
       });
     } catch (error) {
-      logger.error(`Error in getUploadUrl controller: ${error.message}`);
+      logger.error('Error in getUploadUrl controller', {
+        error: error.message,
+      });
 
       // Handle validation errors from service
-      if (error.message.includes('Invalid')) {
+      if (
+        error.message.includes('Invalid') ||
+        error.message.includes('exceeds')
+      ) {
         return res.status(400).json({
           success: false,
           message: error.message,
@@ -60,6 +47,39 @@ export class BeatController {
       res.status(500).json({
         success: false,
         message: 'Error generating upload URL',
+        error:
+          process.env.NODE_ENV === 'development' ? error.message : undefined,
+      });
+    }
+  }
+
+  /**
+   * STREAM AUDIO - Redirect to presigned URL for audio playback
+   * GET /api/v1/beats/:id/audio
+   */
+  static async streamAudio(req, res) {
+    try {
+      const { id } = req.params;
+      const presignedUrl = await BeatService.getAudioPresignedUrl(id);
+
+      // Redirect to the S3 presigned URL
+      res.redirect(presignedUrl);
+    } catch (error) {
+      logger.error('Error in streamAudio controller', {
+        beatId: req.params.id,
+        error: error.message,
+      });
+
+      if (error.message.includes('not found')) {
+        return res.status(404).json({
+          success: false,
+          message: 'Beat or audio file not found',
+        });
+      }
+
+      res.status(500).json({
+        success: false,
+        message: 'Error streaming audio',
         error:
           process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
@@ -85,7 +105,10 @@ export class BeatController {
 
       const newBeat = await BeatService.createBeat(beatData);
 
-      logger.info(`Beat created via API: ${newBeat._id}`);
+      logger.info('Beat created via API', {
+        beatId: newBeat._id,
+        userId: req.user?.id,
+      });
 
       res.status(201).json({
         success: true,
@@ -93,7 +116,7 @@ export class BeatController {
         data: newBeat,
       });
     } catch (error) {
-      logger.error(`Error in createBeat controller: ${error.message}`);
+      logger.error('Error in createBeat controller', { error: error.message });
 
       // Manejar errores de validación de Mongoose
       if (error.name === 'ValidationError') {
@@ -166,7 +189,7 @@ export class BeatController {
         pagination: result.pagination,
       });
     } catch (error) {
-      logger.error(`Error in getAllBeats controller: ${error.message}`);
+      logger.error('Error in getAllBeats controller', { error: error.message });
       res.status(500).json({
         success: false,
         message: 'Error retrieving beats',
@@ -204,7 +227,10 @@ export class BeatController {
         data: beat,
       });
     } catch (error) {
-      logger.error(`Error in getBeatById controller: ${error.message}`);
+      logger.error('Error in getBeatById controller', {
+        beatId: req.params.id,
+        error: error.message,
+      });
 
       // Error de ID inválido
       if (error.name === 'CastError') {
@@ -232,11 +258,7 @@ export class BeatController {
       const { id } = req.params;
       const updateData = req.body;
 
-      // Remover campos que no se deben actualizar directamente
-      delete updateData._id;
-      delete updateData.createdAt;
-      delete updateData.createdBy; // No permitir cambiar el creador
-      delete updateData.stats; // Las stats se actualizan por métodos específicos
+      // Note: Protected fields removal is handled in the service
 
       const updatedBeat = await BeatService.updateBeat(id, updateData);
 
@@ -247,7 +269,7 @@ export class BeatController {
         });
       }
 
-      logger.info(`Beat ${id} updated by user ${req.user?.id || 'unknown'}`);
+      logger.info('Beat updated via API', { beatId: id, userId: req.user?.id });
 
       res.status(200).json({
         success: true,
@@ -255,7 +277,10 @@ export class BeatController {
         data: updatedBeat,
       });
     } catch (error) {
-      logger.error(`Error in updateBeat controller: ${error.message}`);
+      logger.error('Error in updateBeat controller', {
+        beatId: req.params.id,
+        error: error.message,
+      });
 
       if (error.name === 'ValidationError') {
         return res.status(400).json({
@@ -301,14 +326,17 @@ export class BeatController {
         });
       }
 
-      logger.info(`Beat ${id} deleted by user ${req.user?.id || 'unknown'}`);
+      logger.info('Beat deleted via API', { beatId: id, userId: req.user?.id });
 
       res.status(200).json({
         success: true,
         message: 'Beat deleted successfully',
       });
     } catch (error) {
-      logger.error(`Error in deleteBeat controller: ${error.message}`);
+      logger.error('Error in deleteBeat controller', {
+        beatId: req.params.id,
+        error: error.message,
+      });
 
       if (error.name === 'CastError') {
         return res.status(400).json({
@@ -353,7 +381,10 @@ export class BeatController {
         searchTerm: searchTerm.trim(),
       });
     } catch (error) {
-      logger.error(`Error in searchBeats controller: ${error.message}`);
+      logger.error('Error in searchBeats controller', {
+        searchTerm: req.query.q,
+        error: error.message,
+      });
       res.status(500).json({
         success: false,
         message: 'Error performing search',
@@ -382,7 +413,7 @@ export class BeatController {
         });
       }
 
-      logger.info(`Beat ${id} played by user ${req.user.id}`);
+      logger.info('Beat played', { beatId: id, userId: req.user.id });
 
       res.status(200).json({
         success: true,
@@ -393,7 +424,10 @@ export class BeatController {
         },
       });
     } catch (error) {
-      logger.error(`Error in playBeat controller: ${error.message}`);
+      logger.error('Error in playBeat controller', {
+        beatId: req.params.id,
+        error: error.message,
+      });
       res.status(500).json({
         success: false,
         message: 'Error updating play count',
@@ -450,7 +484,10 @@ export class BeatController {
         userId: result.userId,
       });
     } catch (error) {
-      logger.error(`Error in getMyBeats controller: ${error.message}`);
+      logger.error('Error in getMyBeats controller', {
+        userId: req.user.id,
+        error: error.message,
+      });
       res.status(500).json({
         success: false,
         message: 'Error retrieving user beats',
@@ -474,7 +511,7 @@ export class BeatController {
         data: stats,
       });
     } catch (error) {
-      logger.error(`Error in getStats controller: ${error.message}`);
+      logger.error('Error in getStats controller', { error: error.message });
       res.status(500).json({
         success: false,
         message: 'Error retrieving statistics',
