@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   mongodb:
     restart: unless-stopped
@@ -31,6 +29,11 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - API_TITLE=${API_TITLE}
       - API_DESCRIPTION=${API_DESCRIPTION}
+      - AWS_REGION=${AWS_REGION}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_BUCKET_NAME=${AWS_BUCKET_NAME}
+      - CDN_DOMAIN=${CDN_DOMAIN}
     depends_on:
       - mongodb
     networks:
@@ -43,4 +46,4 @@ volumes:
 
 networks:
   socialbeats-network:
-    driver: bridge
+    external: true
