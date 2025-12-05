@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import mongoose from 'mongoose';
+
 import {
   S3Client,
   PutObjectCommand,
@@ -59,8 +59,6 @@ const runTest = async () => {
       title: 'E2E Test Beat',
       artist: 'Test Script',
       genre: 'Other',
-      bpm: 120,
-      duration: 60,
       audio: {
         s3Key: testKey,
         filename: 'e2e-test.mp3',

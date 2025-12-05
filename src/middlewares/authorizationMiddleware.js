@@ -46,8 +46,7 @@ export const requireOwnership = async (req, res, next) => {
     const isOwner = beat.createdBy?.userId === userId;
 
     // Verificar si el usuario es admin (basado en roles del JWT)
-    const isAdmin =
-      req.user.roles?.includes('x-roles') || req.user.roles?.includes('admin');
+    const isAdmin = req.user.roles?.includes('admin');
 
     if (!isOwner && !isAdmin) {
       logger.warn(
@@ -116,8 +115,7 @@ export const requireBeatAccess = async (req, res, next) => {
 
     // Verificar si es el propietario o admin
     const isOwner = beat.createdBy?.userId === userId;
-    const isAdmin =
-      req.user.roles?.includes('x-roles') || req.user.roles?.includes('admin');
+    const isAdmin = req.user.roles?.includes('admin');
 
     if (!isOwner && !isAdmin) {
       logger.warn(

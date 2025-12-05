@@ -153,7 +153,7 @@ const beatSchema = new mongoose.Schema(
 
 // Índices para mejorar consultas
 beatSchema.index({ 'createdBy.userId': 1, createdAt: -1 });
-beatSchema.index({ genre: 1, bpm: 1 });
+beatSchema.index({ genre: 1 });
 beatSchema.index({ tags: 1 });
 beatSchema.index({ 'stats.plays': -1 });
 beatSchema.index({ isPublic: 1 });
