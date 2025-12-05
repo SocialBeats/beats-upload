@@ -359,7 +359,6 @@ describe('BeatService Integration Tests (with S3)', () => {
       expect(stats.general.totalBeats).toBe(2);
       expect(stats.general.totalPlays).toBe(30);
       expect(stats.general.totalDownloads).toBe(15);
-      expect(stats.general.avgDuration).toBe(150);
       expect(stats.genres).toHaveLength(2);
     });
   });

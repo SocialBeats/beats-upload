@@ -159,16 +159,12 @@ export class BeatController {
         sortBy = 'createdAt',
         sortOrder = 'desc',
         genre,
-        minBpm,
-        maxBpm,
         tags,
         isFree,
       } = req.query;
 
       const filters = {};
       if (genre) filters.genre = genre;
-      if (minBpm) filters.minBpm = parseInt(minBpm);
-      if (maxBpm) filters.maxBpm = parseInt(maxBpm);
       if (tags) filters.tags = tags.split(',');
       if (isFree !== undefined) filters.isFree = isFree === 'true';
 
@@ -452,16 +448,12 @@ export class BeatController {
         sortOrder = 'desc',
         includePrivate = 'true',
         genre,
-        minBpm,
-        maxBpm,
         tags,
         isFree,
       } = req.query;
 
       const filters = {};
       if (genre) filters.genre = genre;
-      if (minBpm) filters.minBpm = parseInt(minBpm);
-      if (maxBpm) filters.maxBpm = parseInt(maxBpm);
       if (tags) filters.tags = tags.split(',');
       if (isFree !== undefined) filters.isFree = isFree === 'true';
 

@@ -30,23 +30,10 @@ const beatSchema = new mongoose.Schema(
       },
     },
 
-    bpm: {
-      type: Number,
-      required: [true, 'BPM is required'],
-      min: [60, 'BPM must be at least 60'],
-      max: [200, 'BPM cannot exceed 200'],
-    },
-
     key: {
       type: String,
       enum: ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'],
       default: null,
-    },
-
-    duration: {
-      type: Number, // en segundos
-      required: [true, 'Duration is required'],
-      min: [10, 'Duration must be at least 10 seconds'],
     },
 
     // Tags y metadata
@@ -173,6 +160,7 @@ beatSchema.index({ isPublic: 1 });
 
 // Virtual para formatear duración en mm:ss
 beatSchema.virtual('formattedDuration').get(function () {
+  if (!this.duration) return '0:00';
   const minutes = Math.floor(this.duration / 60);
   const seconds = this.duration % 60;
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
@@ -196,8 +184,6 @@ beatSchema.statics.findWithFilters = function (filters = {}) {
   const query = { isPublic: true };
 
   if (filters.genre) query.genre = filters.genre;
-  if (filters.minBpm) query.bpm = { ...query.bpm, $gte: filters.minBpm };
-  if (filters.maxBpm) query.bpm = { ...query.bpm, $lte: filters.maxBpm };
   if (filters.tags) query.tags = { $in: filters.tags };
   if (filters.isFree !== undefined) query['pricing.isFree'] = filters.isFree;
 
