@@ -737,25 +737,7 @@ describe('BeatController', () => {
       );
     });
 
-    it('should handle BPM filters', async () => {
-      req.query = { minBpm: '120', maxBpm: '140' };
-      const mockResult = {
-        beats: [],
-        pagination: { currentPage: 1, totalPages: 0, totalBeats: 0 },
-        userId: 'user123',
-      };
-      BeatService.getUserBeats.mockResolvedValue(mockResult);
-
-      await BeatController.getMyBeats(req, res);
-
-      expect(BeatService.getUserBeats).toHaveBeenCalledWith(
-        'user123',
-        expect.objectContaining({
-          minBpm: 120,
-          maxBpm: 140,
-        })
-      );
-    });
+    // BPM filters test removed as bpm field no longer exists
 
     it('should handle tags filter', async () => {
       req.query = { tags: 'chill,summer,trap' };

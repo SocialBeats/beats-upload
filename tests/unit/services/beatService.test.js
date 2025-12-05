@@ -486,26 +486,7 @@ describe('BeatService', () => {
       });
     });
 
-    it('should apply BPM filters correctly', async () => {
-      const mockQuery = {
-        skip: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockReturnThis(),
-        sort: vi.fn().mockResolvedValue([]),
-      };
-
-      Beat.find = vi.fn().mockReturnValue(mockQuery);
-      Beat.countDocuments = vi.fn().mockResolvedValue(0);
-
-      await BeatService.getUserBeats('user123', {
-        minBpm: 120,
-        maxBpm: 140,
-      });
-
-      expect(Beat.find).toHaveBeenCalledWith({
-        'createdBy.userId': 'user123',
-        bpm: { $gte: 120, $lte: 140 },
-      });
-    });
+    // BPM filters test removed as bpm field no longer exists
 
     it('should apply tags filter correctly', async () => {
       const mockQuery = {
@@ -605,7 +586,6 @@ describe('BeatService', () => {
           totalBeats: 100,
           totalPlays: 5000,
           totalDownloads: 500,
-          avgDuration: 180,
         },
       ];
       const mockGenreStats = [

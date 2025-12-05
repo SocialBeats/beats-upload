@@ -151,68 +151,7 @@ describe('Validation Middleware', () => {
       });
     });
 
-    describe('BPM validation', () => {
-      it('should fail if bpm is missing', () => {
-        req.body = { ...validBeatData, bpm: undefined };
-        validateCreateBeat(req, res, next);
-        expect(res.status).toHaveBeenCalledWith(400);
-      });
-
-      it('should fail if bpm is not a number', () => {
-        req.body = { ...validBeatData, bpm: '120' };
-        validateCreateBeat(req, res, next);
-        expect(res.status).toHaveBeenCalledWith(400);
-      });
-
-      it('should fail if bpm is below 60', () => {
-        req.body = { ...validBeatData, bpm: 59 };
-        validateCreateBeat(req, res, next);
-        expect(res.status).toHaveBeenCalledWith(400);
-      });
-
-      it('should fail if bpm is above 200', () => {
-        req.body = { ...validBeatData, bpm: 201 };
-        validateCreateBeat(req, res, next);
-        expect(res.status).toHaveBeenCalledWith(400);
-      });
-
-      it('should pass with bpm at boundaries (60 and 200)', () => {
-        req.body = { ...validBeatData, bpm: 60 };
-        validateCreateBeat(req, res, next);
-        expect(next).toHaveBeenCalled();
-
-        vi.clearAllMocks();
-        req.body = { ...validBeatData, bpm: 200 };
-        validateCreateBeat(req, res, next);
-        expect(next).toHaveBeenCalled();
-      });
-    });
-
-    describe('Duration validation', () => {
-      it('should fail if duration is missing', () => {
-        req.body = { ...validBeatData, duration: undefined };
-        validateCreateBeat(req, res, next);
-        expect(res.status).toHaveBeenCalledWith(400);
-      });
-
-      it('should fail if duration is not a number', () => {
-        req.body = { ...validBeatData, duration: '180' };
-        validateCreateBeat(req, res, next);
-        expect(res.status).toHaveBeenCalledWith(400);
-      });
-
-      it('should fail if duration is below 10 seconds', () => {
-        req.body = { ...validBeatData, duration: 9 };
-        validateCreateBeat(req, res, next);
-        expect(res.status).toHaveBeenCalledWith(400);
-      });
-
-      it('should pass with duration at boundary (10)', () => {
-        req.body = { ...validBeatData, duration: 10 };
-        validateCreateBeat(req, res, next);
-        expect(next).toHaveBeenCalled();
-      });
-    });
+    // BPM and Duration validation tests removed as these fields no longer exist
 
     describe('Audio validation', () => {
       it('should fail if audio object is missing', () => {
@@ -398,8 +337,6 @@ describe('Validation Middleware', () => {
       req.body = {
         title: '',
         genre: 'Invalid',
-        bpm: 300,
-        duration: 5,
       };
       validateCreateBeat(req, res, next);
       expect(res.status).toHaveBeenCalledWith(400);
@@ -408,8 +345,6 @@ describe('Validation Middleware', () => {
           errors: expect.arrayContaining([
             expect.objectContaining({ field: 'title' }),
             expect.objectContaining({ field: 'genre' }),
-            expect.objectContaining({ field: 'bpm' }),
-            expect.objectContaining({ field: 'duration' }),
             expect.objectContaining({ field: 'audio' }),
           ]),
         })
@@ -464,33 +399,7 @@ describe('Validation Middleware', () => {
       });
     });
 
-    describe('BPM validation', () => {
-      it('should fail if bpm is invalid', () => {
-        req.body = { bpm: 300 };
-        validateUpdateBeat(req, res, next);
-        expect(res.status).toHaveBeenCalledWith(400);
-      });
-
-      it('should pass with valid bpm', () => {
-        req.body = { bpm: 140 };
-        validateUpdateBeat(req, res, next);
-        expect(next).toHaveBeenCalled();
-      });
-    });
-
-    describe('Duration validation', () => {
-      it('should fail if duration is invalid', () => {
-        req.body = { duration: 5 };
-        validateUpdateBeat(req, res, next);
-        expect(res.status).toHaveBeenCalledWith(400);
-      });
-
-      it('should pass with valid duration', () => {
-        req.body = { duration: 200 };
-        validateUpdateBeat(req, res, next);
-        expect(next).toHaveBeenCalled();
-      });
-    });
+    // BPM and Duration validation tests removed as these fields no longer exist
 
     describe('Key validation', () => {
       it('should fail if key is invalid', () => {
@@ -594,7 +503,6 @@ describe('Validation Middleware', () => {
       req.body = {
         title: '',
         genre: 'Invalid',
-        bpm: 300,
         _id: '123',
       };
       validateUpdateBeat(req, res, next);
@@ -604,7 +512,6 @@ describe('Validation Middleware', () => {
           errors: expect.arrayContaining([
             expect.objectContaining({ field: 'title' }),
             expect.objectContaining({ field: 'genre' }),
-            expect.objectContaining({ field: 'bpm' }),
             expect.objectContaining({ field: '_id' }),
           ]),
         })
@@ -665,25 +572,7 @@ describe('Validation Middleware', () => {
       });
     });
 
-    describe('BPM range validation', () => {
-      it('should fail if minBpm is less than 60', () => {
-        req.query = { minBpm: '50' };
-        validateQueryParams(req, res, next);
-        expect(res.status).toHaveBeenCalledWith(400);
-      });
-
-      it('should fail if maxBpm exceeds 200', () => {
-        req.query = { maxBpm: '250' };
-        validateQueryParams(req, res, next);
-        expect(res.status).toHaveBeenCalledWith(400);
-      });
-
-      it('should pass with valid BPM range', () => {
-        req.query = { minBpm: '100', maxBpm: '150' };
-        validateQueryParams(req, res, next);
-        expect(next).toHaveBeenCalled();
-      });
-    });
+    // BPM range validation tests removed as bpm field no longer exists
 
     describe('SortBy validation', () => {
       it('should fail if sortBy is invalid', () => {
@@ -696,7 +585,6 @@ describe('Validation Middleware', () => {
         const validSortFields = [
           'createdAt',
           'title',
-          'bpm',
           'stats.plays',
           'pricing.price',
         ];
@@ -752,8 +640,6 @@ describe('Validation Middleware', () => {
       req.query = {
         page: '0',
         limit: '100',
-        minBpm: '30',
-        maxBpm: '300',
         sortBy: 'invalid',
         sortOrder: 'invalid',
       };
@@ -764,8 +650,6 @@ describe('Validation Middleware', () => {
           errors: expect.arrayContaining([
             expect.objectContaining({ field: 'page' }),
             expect.objectContaining({ field: 'limit' }),
-            expect.objectContaining({ field: 'minBpm' }),
-            expect.objectContaining({ field: 'maxBpm' }),
             expect.objectContaining({ field: 'sortBy' }),
             expect.objectContaining({ field: 'sortOrder' }),
           ]),

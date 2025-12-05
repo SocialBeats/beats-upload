@@ -4,7 +4,7 @@ import logger from '../../logger.js';
  * Validaciones para la creación de beats
  */
 export const validateCreateBeat = (req, res, next) => {
-  const { title, genre, bpm, duration, audio } = req.body;
+  const { title, genre, audio } = req.body;
   const errors = [];
 
   // Validar campos requeridos
@@ -35,26 +35,6 @@ export const validateCreateBeat = (req, res, next) => {
     errors.push({
       field: 'genre',
       message: `Genre must be one of: ${validGenres.join(', ')}`,
-    });
-  }
-
-  // Validar BPM
-  if (!bpm) {
-    errors.push({ field: 'bpm', message: 'BPM is required' });
-  } else if (typeof bpm !== 'number' || bpm < 60 || bpm > 200) {
-    errors.push({
-      field: 'bpm',
-      message: 'BPM must be a number between 60 and 200',
-    });
-  }
-
-  // Validar duración
-  if (!duration) {
-    errors.push({ field: 'duration', message: 'Duration is required' });
-  } else if (typeof duration !== 'number' || duration < 10) {
-    errors.push({
-      field: 'duration',
-      message: 'Duration must be a number of at least 10 seconds',
     });
   }
 
@@ -162,8 +142,7 @@ export const validateCreateBeat = (req, res, next) => {
  */
 export const validateUpdateBeat = (req, res, next) => {
   const errors = [];
-  const { title, genre, bpm, duration, key, tags, description, pricing } =
-    req.body;
+  const { title, genre, key, tags, description, pricing } = req.body;
 
   // Validar title si está presente
   if (title !== undefined) {
@@ -197,26 +176,6 @@ export const validateUpdateBeat = (req, res, next) => {
       errors.push({
         field: 'genre',
         message: `Genre must be one of: ${validGenres.join(', ')}`,
-      });
-    }
-  }
-
-  // Validar BPM si está presente
-  if (bpm !== undefined) {
-    if (typeof bpm !== 'number' || bpm < 60 || bpm > 200) {
-      errors.push({
-        field: 'bpm',
-        message: 'BPM must be a number between 60 and 200',
-      });
-    }
-  }
-
-  // Validar duración si está presente
-  if (duration !== undefined) {
-    if (typeof duration !== 'number' || duration < 10) {
-      errors.push({
-        field: 'duration',
-        message: 'Duration must be a number of at least 10 seconds',
       });
     }
   }
@@ -300,7 +259,7 @@ export const validateUpdateBeat = (req, res, next) => {
  */
 export const validateQueryParams = (req, res, next) => {
   const errors = [];
-  const { page, limit, minBpm, maxBpm, sortBy, sortOrder } = req.query;
+  const { page, limit, sortBy, sortOrder } = req.query;
 
   // Validar page
   if (page !== undefined) {
@@ -324,27 +283,11 @@ export const validateQueryParams = (req, res, next) => {
     }
   }
 
-  // Validar BPM range
-  if (minBpm !== undefined) {
-    const min = parseInt(minBpm);
-    if (isNaN(min) || min < 60) {
-      errors.push({ field: 'minBpm', message: 'minBpm must be at least 60' });
-    }
-  }
-
-  if (maxBpm !== undefined) {
-    const max = parseInt(maxBpm);
-    if (isNaN(max) || max > 200) {
-      errors.push({ field: 'maxBpm', message: 'maxBpm cannot exceed 200' });
-    }
-  }
-
   // Validar sortBy
   if (sortBy !== undefined) {
     const validSortFields = [
       'createdAt',
       'title',
-      'bpm',
       'stats.plays',
       'pricing.price',
     ];

@@ -497,15 +497,16 @@ export class BeatService {
       // Aplicar filtros adicionales si se proporcionan
       const query = { ...baseQuery };
       if (filters.genre) query.genre = filters.genre;
-      if (filters.minBpm) query.bpm = { ...query.bpm, $gte: filters.minBpm };
-      if (filters.maxBpm) query.bpm = { ...query.bpm, $lte: filters.maxBpm };
       if (filters.tags) query.tags = { $in: filters.tags };
       if (filters.isFree !== undefined)
         query['pricing.isFree'] = filters.isFree;
 
       const [beats, totalBeats] = await Promise.all([
-        Beat.find(query).skip(skip).limit(parseInt(limit)).sort(sort),
-        Beat.countDocuments(query),
+        Beat.find({ ...query })
+          .skip(skip)
+          .limit(parseInt(limit))
+          .sort(sort),
+        Beat.countDocuments({ ...query }),
       ]);
 
       const pagination = this._getPaginationMetadata(totalBeats, page, limit);
@@ -544,7 +545,6 @@ export class BeatService {
             totalBeats: { $sum: 1 },
             totalPlays: { $sum: '$stats.plays' },
             totalDownloads: { $sum: '$stats.downloads' },
-            avgDuration: { $avg: '$duration' },
           },
         },
       ]);

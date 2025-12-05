@@ -52,8 +52,6 @@ describe('Beat Model Test', () => {
     }
     expect(err).toBeInstanceOf(mongoose.Error.ValidationError);
     expect(err.errors.genre).toBeDefined();
-    expect(err.errors.bpm).toBeDefined();
-    expect(err.errors.duration).toBeDefined();
     expect(err.errors['audio.s3Key']).toBeDefined();
   });
 
@@ -109,22 +107,7 @@ describe('Beat Model Test', () => {
     expect(err.message).toBe('Paid beats must have a price greater than 0');
   });
 
-  it('should format duration correctly via virtual', async () => {
-    const beat = new Beat({
-      title: 'Test Beat',
-      artist: 'Test Artist',
-      genre: 'Hip Hop',
-      bpm: 120,
-      duration: 125, // 2 minutes 5 seconds
-      audio: {
-        s3Key: 'beats/test.mp3',
-        filename: 'test.mp3',
-        size: 1024,
-        format: 'mp3',
-      },
-    });
-    expect(beat.formattedDuration).toBe('2:05');
-  });
+  // formattedDuration virtual removed as duration field no longer exists
 
   it('should find beats with filters', async () => {
     const beat1 = new Beat({
@@ -219,57 +202,9 @@ describe('Beat Model Test', () => {
     expect(savedBeat.tags).toContain('melodic');
   });
 
-  it('should find beats with minBpm filter', async () => {
-    const beat1 = new Beat({
-      title: 'Slow Beat',
-      genre: 'Jazz',
-      bpm: 80,
-      duration: 180,
-      audio: { s3Key: 'k1', filename: 'f1', size: 1, format: 'mp3' },
-      isPublic: true,
-    });
-    const beat2 = new Beat({
-      title: 'Fast Beat',
-      genre: 'Electronic',
-      bpm: 140,
-      duration: 180,
-      audio: { s3Key: 'k2', filename: 'f2', size: 1, format: 'mp3' },
-      isPublic: true,
-    });
-    await beat1.save();
-    await beat2.save();
+  // minBpm filter test removed as bpm field no longer exists
 
-    const fastBeats = await Beat.findWithFilters({ minBpm: 120 });
-    expect(fastBeats).toHaveLength(1);
-    expect(fastBeats[0].title).toBe('Fast Beat');
-  });
-
-  it('should find beats with maxBpm filter', async () => {
-    await Beat.deleteMany({});
-
-    const beat1 = new Beat({
-      title: 'Slow Beat',
-      genre: 'Jazz',
-      bpm: 80,
-      duration: 180,
-      audio: { s3Key: 'k1', filename: 'f1', size: 1, format: 'mp3' },
-      isPublic: true,
-    });
-    const beat2 = new Beat({
-      title: 'Fast Beat',
-      genre: 'Electronic',
-      bpm: 140,
-      duration: 180,
-      audio: { s3Key: 'k2', filename: 'f2', size: 1, format: 'mp3' },
-      isPublic: true,
-    });
-    await beat1.save();
-    await beat2.save();
-
-    const slowBeats = await Beat.findWithFilters({ maxBpm: 100 });
-    expect(slowBeats).toHaveLength(1);
-    expect(slowBeats[0].title).toBe('Slow Beat');
-  });
+  // maxBpm filter test removed as bpm field no longer exists
 
   it('should find beats with tags filter', async () => {
     await Beat.deleteMany({});
