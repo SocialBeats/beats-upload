@@ -12,7 +12,6 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 // Remove static import
 // import { BeatService } from '../../src/services/beatService.js';
 // import { Beat } from '../../src/models/index.js';
-import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
 // Mock S3 Client
 const mocks = vi.hoisted(() => {

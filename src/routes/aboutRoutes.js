@@ -13,7 +13,6 @@ export default function aboutRoutes(app) {
     process.env.API_DESCRIPTION ||
     'This is an OAS description of this Microservice REST API';
   const version = getVersion();
-  const port = process.env.PORT;
 
   // Swagger options
   const swaggerOptions = {

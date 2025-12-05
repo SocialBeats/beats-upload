@@ -28,8 +28,7 @@ components:
       required:
         - title
         - genre
-        - bpm
-        - duration
+
         - audio
       properties:
         _id:
