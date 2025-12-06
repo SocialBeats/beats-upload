@@ -10,13 +10,6 @@ const beatSchema = new mongoose.Schema(
       maxlength: [100, 'Title cannot exceed 100 characters'],
     },
 
-    artist: {
-      type: String,
-      required: [true, 'Artist is required'],
-      trim: true,
-      maxlength: [50, 'Artist name cannot exceed 50 characters'],
-    },
-
     // Características musicales
     genre: {
       type: String,
@@ -37,23 +30,10 @@ const beatSchema = new mongoose.Schema(
       },
     },
 
-    bpm: {
-      type: Number,
-      required: [true, 'BPM is required'],
-      min: [60, 'BPM must be at least 60'],
-      max: [200, 'BPM cannot exceed 200'],
-    },
-
     key: {
       type: String,
       enum: ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'],
       default: null,
-    },
-
-    duration: {
-      type: Number, // en segundos
-      required: [true, 'Duration is required'],
-      min: [10, 'Duration must be at least 10 seconds'],
     },
 
     // Tags y metadata
@@ -73,9 +53,12 @@ const beatSchema = new mongoose.Schema(
 
     // Información del archivo de audio
     audio: {
-      url: {
+      s3Key: {
         type: String,
-        required: [true, 'Audio URL is required'],
+        required: [true, 'Audio S3 Key is required'],
+      },
+      s3CoverKey: {
+        type: String, // Optional cover image
       },
       filename: {
         type: String,
@@ -138,11 +121,21 @@ const beatSchema = new mongoose.Schema(
       default: false,
     },
 
-    // Información del creador (referencia a User si tienes autenticación)
+    // Información del creador (desnormalizada para microservicios)
     createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User', // Referencia al modelo User
-      required: false, // Por ahora opcional
+      userId: {
+        type: String, // ID del usuario del microservicio de auth
+        required: false, // Opcional para beats anónimos
+      },
+      username: {
+        type: String, // Nombre de usuario para mostrar sin hacer llamadas al otro servicio
+        trim: true,
+      },
+      roles: [
+        {
+          type: String, // Roles del usuario para validaciones rápidas
+        },
+      ],
     },
   },
   {
@@ -159,19 +152,15 @@ const beatSchema = new mongoose.Schema(
 );
 
 // Índices para mejorar consultas
-beatSchema.index({ artist: 1, createdAt: -1 });
-beatSchema.index({ genre: 1, bpm: 1 });
+beatSchema.index({ 'createdBy.userId': 1, createdAt: -1 });
+beatSchema.index({ genre: 1 });
 beatSchema.index({ tags: 1 });
 beatSchema.index({ 'stats.plays': -1 });
 beatSchema.index({ isPublic: 1 });
 
-// Virtual para el URL completo del beat
-beatSchema.virtual('fullUrl').get(function () {
-  return `${process.env.BASE_URL || 'http://localhost:3000'}/api/v1/beats/${this._id}`;
-});
-
 // Virtual para formatear duración en mm:ss
 beatSchema.virtual('formattedDuration').get(function () {
+  if (!this.duration) return '0:00';
   const minutes = Math.floor(this.duration / 60);
   const seconds = this.duration % 60;
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
@@ -195,9 +184,6 @@ beatSchema.statics.findWithFilters = function (filters = {}) {
   const query = { isPublic: true };
 
   if (filters.genre) query.genre = filters.genre;
-  if (filters.artist) query.artist = new RegExp(filters.artist, 'i');
-  if (filters.minBpm) query.bpm = { ...query.bpm, $gte: filters.minBpm };
-  if (filters.maxBpm) query.bpm = { ...query.bpm, $lte: filters.maxBpm };
   if (filters.tags) query.tags = { $in: filters.tags };
   if (filters.isFree !== undefined) query['pricing.isFree'] = filters.isFree;
 
