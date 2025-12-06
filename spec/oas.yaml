@@ -128,7 +128,8 @@ components:
       required:
         - title
         - genre
-
+        - bpm
+        - duration
         - audio
       properties:
         title:

@@ -4,8 +4,10 @@ import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
+  GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { parseStream } from 'music-metadata';
 
 vi.mock('../../../src/models/index.js', () => {
   const BeatMock = {
@@ -43,8 +45,13 @@ vi.mock('@aws-sdk/client-s3', () => {
     }),
     PutObjectCommand: vi.fn(),
     DeleteObjectCommand: vi.fn(),
+    GetObjectCommand: vi.fn(),
   };
 });
+
+vi.mock('music-metadata', () => ({
+  parseStream: vi.fn(),
+}));
 
 vi.mock('@aws-sdk/s3-request-presigner', () => ({
   getSignedUrl: vi.fn(),
@@ -151,7 +158,7 @@ describe('BeatService', () => {
   });
 
   describe('createBeat', () => {
-    it('should create a beat successfully', async () => {
+    it('should create a beat successfully without audio file (metadata only)', async () => {
       const beatData = { title: 'New Beat' };
       const savedBeat = { _id: 'beat123', ...beatData };
 
@@ -166,6 +173,63 @@ describe('BeatService', () => {
       expect(Beat).toHaveBeenCalledWith(beatData);
       expect(saveMock).toHaveBeenCalled();
       expect(result).toEqual(savedBeat);
+    });
+
+    it('should validate and create beat with valid audio file', async () => {
+      const beatData = {
+        title: 'New Beat',
+        audio: { s3Key: 'valid.mp3' },
+      };
+      const savedBeat = { _id: 'beat123', ...beatData };
+
+      // Mock S3 GetObject
+      const s3SendMock = new S3Client().send;
+      s3SendMock.mockResolvedValueOnce({ Body: 'stream' });
+
+      // Mock music-metadata
+      parseStream.mockResolvedValueOnce({
+        format: { codec: 'MPEG 1 Layer 3', duration: 120 },
+      });
+
+      const saveMock = vi.fn().mockResolvedValue(savedBeat);
+      Beat.mockImplementation(function () {
+        return { save: saveMock };
+      });
+
+      const result = await BeatService.createBeat(beatData);
+
+      expect(GetObjectCommand).toHaveBeenCalledWith({
+        Bucket: process.env.AWS_BUCKET_NAME,
+        Key: 'valid.mp3',
+      });
+      expect(parseStream).toHaveBeenCalledWith('stream');
+      expect(saveMock).toHaveBeenCalled();
+      expect(result).toEqual(savedBeat);
+    });
+
+    it('should throw error and delete file if audio validation fails', async () => {
+      const beatData = {
+        title: 'Fake Beat',
+        audio: { s3Key: 'fake.mp3' },
+      };
+
+      // Mock S3 GetObject
+      const s3SendMock = new S3Client().send;
+      s3SendMock.mockResolvedValueOnce({ Body: 'stream' });
+
+      // Mock music-metadata to return invalid format (no codec)
+      parseStream.mockResolvedValueOnce({
+        format: {},
+      });
+
+      await expect(BeatService.createBeat(beatData)).rejects.toThrow(
+        'Audio validation failed'
+      );
+
+      expect(DeleteObjectCommand).toHaveBeenCalledWith({
+        Bucket: process.env.AWS_BUCKET_NAME,
+        Key: 'fake.mp3',
+      });
     });
   });
 
