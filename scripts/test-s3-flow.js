@@ -57,7 +57,7 @@ const runTest = async () => {
     console.log('\n💾 Creating Beat in Database...');
     const beatData = {
       title: 'E2E Test Beat',
-      artist: 'Test Script',
+
       genre: 'Other',
       audio: {
         s3Key: testKey,

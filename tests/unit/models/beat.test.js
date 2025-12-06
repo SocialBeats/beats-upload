@@ -27,8 +27,7 @@ describe('Beat Model Test', () => {
       title: 'Test Beat',
       artist: 'Test Artist',
       genre: 'Hip Hop',
-      bpm: 120,
-      duration: 180,
+
       audio: {
         s3Key: 'beats/test.mp3',
         filename: 'test.mp3',
