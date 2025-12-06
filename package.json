@@ -32,6 +32,7 @@
     "jsonwebtoken": "^9.0.2",
     "marked": "^17.0.0",
     "mongoose": "^8.19.3",
+    "music-metadata": "^11.10.3",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "winston": "^3.18.3"

@@ -4,8 +4,10 @@ import {
   S3Client,
   DeleteObjectCommand,
   PutObjectCommand,
+  GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { parseStream } from 'music-metadata';
 import { randomUUID } from 'crypto';
 
 const s3Client = new S3Client({
@@ -132,6 +134,35 @@ export class BeatService {
    */
   static async createBeat(beatData) {
     try {
+      // Validate audio file content
+      if (beatData.audio?.s3Key) {
+        try {
+          const command = new GetObjectCommand({
+            Bucket: process.env.AWS_BUCKET_NAME,
+            Key: beatData.audio.s3Key,
+          });
+          const { Body } = await s3Client.send(command);
+
+          const metadata = await parseStream(Body);
+
+          // Check if it has audio codec
+          if (!metadata.format.codec) {
+            throw new Error('File is not a valid audio file');
+          }
+
+          // Optional: Verify it matches the declared mimetype if needed
+          // const detectedMime = metadata.format.container;
+        } catch (validationError) {
+          logger.error('Audio validation failed', {
+            error: validationError.message,
+            s3Key: beatData.audio.s3Key,
+          });
+          throw new Error(
+            `Audio validation failed: ${validationError.message}. Please ensure you are uploading a valid audio file.`
+          );
+        }
+      }
+
       const beat = new Beat(beatData);
       const savedBeat = await beat.save();
       logger.info('Beat created successfully', { beatId: savedBeat._id });
