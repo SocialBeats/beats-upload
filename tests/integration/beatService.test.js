@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => {
   return {
     send: vi.fn(),
     DeleteObjectCommand: vi.fn(),
+    GetObjectCommand: vi.fn(),
   };
 });
 
@@ -29,8 +30,15 @@ vi.mock('@aws-sdk/client-s3', () => {
       }
     },
     DeleteObjectCommand: mocks.DeleteObjectCommand,
+    GetObjectCommand: mocks.GetObjectCommand,
   };
 });
+
+vi.mock('music-metadata', () => ({
+  parseStream: vi.fn().mockResolvedValue({
+    format: { codec: 'MPEG 1 Layer 3', duration: 120 },
+  }),
+}));
 
 describe('BeatService Integration Tests (with S3)', () => {
   let mongoServer;
@@ -73,6 +81,9 @@ describe('BeatService Integration Tests (with S3)', () => {
   beforeEach(async () => {
     await Beat.deleteMany({});
     vi.clearAllMocks();
+
+    // Setup default S3 mock response for GetObjectCommand (audio validation)
+    mocks.send.mockResolvedValue({ Body: 'mock-stream' });
   });
 
   describe('createBeat', () => {
@@ -93,8 +104,8 @@ describe('BeatService Integration Tests (with S3)', () => {
 
       const beat = await BeatService.createBeat(beatData);
       expect(beat.audio.s3Key).toBe('beats/audio.mp3');
-      // S3 upload happens in frontend, so no S3 call here
-      expect(mocks.send).not.toHaveBeenCalled();
+      // S3 GetObject is called for audio validation
+      expect(mocks.send).toHaveBeenCalled();
     });
   });
 
@@ -378,7 +389,10 @@ describe('BeatService Integration Tests (with S3)', () => {
         },
       };
 
-      // Mock Beat.prototype.save to fail
+      // Mock S3 GetObject to succeed (validation passes)
+      mocks.send.mockResolvedValueOnce({ Body: 'mock-stream' });
+
+      // Mock Beat.prototype.save to fail AFTER validation
       vi.spyOn(Beat.prototype, 'save').mockRejectedValueOnce(
         new Error('DB Error')
       );
