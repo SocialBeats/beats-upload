@@ -9,6 +9,7 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ quiet: true, path: path.join(__dirname, '.env') });
 
 const logLevel = (process.env.LOG_LEVEL || 'info').trim().toLowerCase();
+const isProduction = process.env.NODE_ENV === 'production';
 
 const levelColors = {
   info: '\x1b[34m', // Blue
@@ -21,14 +22,27 @@ const levelColors = {
 
 const resetColor = '\x1b[0m';
 
-const logFormat = format.printf(({ level, message, timestamp }) => {
-  const color = levelColors[level] || '';
-  return `${new Date(timestamp).toLocaleString()} [${color}${level.toUpperCase()}${resetColor}]: ${message}`;
-});
+// Custom format for development (human readable)
+const devFormat = format.printf(
+  ({ level, message, timestamp, ...metadata }) => {
+    const color = levelColors[level] || '';
+    let msg = `${new Date(timestamp).toLocaleString()} [${color}${level.toUpperCase()}${resetColor}]: ${message}`;
+
+    if (Object.keys(metadata).length > 0) {
+      msg += ` ${JSON.stringify(metadata)}`;
+    }
+    return msg;
+  }
+);
+
+// JSON format for production (structured logging)
+const prodFormat = format.combine(format.timestamp(), format.json());
 
 const logger = createLogger({
   level: logLevel,
-  format: format.combine(format.timestamp(), logFormat),
+  format: isProduction
+    ? prodFormat
+    : format.combine(format.timestamp(), devFormat),
   transports: [new transports.Console({ level: logLevel })],
 });
 

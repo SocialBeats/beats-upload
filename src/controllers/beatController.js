@@ -6,6 +6,87 @@ import logger from '../../logger.js';
  */
 export class BeatController {
   /**
+   * UPLOAD URL - Generate presigned URL for direct S3 upload
+   * POST /api/v1/beats/upload-url
+   */
+  static async getUploadUrl(req, res) {
+    try {
+      const { extension, mimetype, size } = req.body;
+      const userId = req.user?.id || 'anonymous';
+
+      const result = await BeatService.generatePresignedUploadUrl({
+        extension: extension ? extension.replace('.', '') : '',
+        mimetype,
+        size,
+        userId,
+      });
+
+      logger.info('Upload URL generated', { userId, extension, mimetype });
+
+      res.status(200).json({
+        success: true,
+        message: 'Upload URL generated successfully',
+        data: result,
+      });
+    } catch (error) {
+      logger.error('Error in getUploadUrl controller', {
+        error: error.message,
+      });
+
+      // Handle validation errors from service
+      if (
+        error.message.includes('Invalid') ||
+        error.message.includes('exceeds')
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      res.status(500).json({
+        success: false,
+        message: 'Error generating upload URL',
+        error:
+          process.env.NODE_ENV === 'development' ? error.message : undefined,
+      });
+    }
+  }
+
+  /**
+   * STREAM AUDIO - Redirect to presigned URL for audio playback
+   * GET /api/v1/beats/:id/audio
+   */
+  static async streamAudio(req, res) {
+    try {
+      const { id } = req.params;
+      const presignedUrl = await BeatService.getAudioPresignedUrl(id);
+
+      // Redirect to the S3 presigned URL
+      res.redirect(presignedUrl);
+    } catch (error) {
+      logger.error('Error in streamAudio controller', {
+        beatId: req.params.id,
+        error: error.message,
+      });
+
+      if (error.message.includes('not found')) {
+        return res.status(404).json({
+          success: false,
+          message: 'Beat or audio file not found',
+        });
+      }
+
+      res.status(500).json({
+        success: false,
+        message: 'Error streaming audio',
+        error:
+          process.env.NODE_ENV === 'development' ? error.message : undefined,
+      });
+    }
+  }
+
+  /**
    * CREATE - Crear un nuevo beat
    * POST /api/v1/beats
    */
@@ -13,14 +94,21 @@ export class BeatController {
     try {
       const beatData = req.body;
 
-      // Agregar información adicional si está disponible
+      // Agregar información del usuario autenticado (viene de headers x-user-id, x-roles)
       if (req.user) {
-        beatData.createdBy = req.user.id;
+        beatData.createdBy = {
+          userId: req.user.id, // Este valor viene del header x-user-id
+          username: req.user.username || req.user.id,
+          roles: req.user.roles || [],
+        };
       }
 
       const newBeat = await BeatService.createBeat(beatData);
 
-      logger.info(`Beat created via API: ${newBeat._id}`);
+      logger.info('Beat created via API', {
+        beatId: newBeat._id,
+        userId: req.user?.id,
+      });
 
       res.status(201).json({
         success: true,
@@ -28,7 +116,7 @@ export class BeatController {
         data: newBeat,
       });
     } catch (error) {
-      logger.error(`Error in createBeat controller: ${error.message}`);
+      logger.error('Error in createBeat controller', { error: error.message });
 
       // Manejar errores de validación de Mongoose
       if (error.name === 'ValidationError') {
@@ -71,18 +159,12 @@ export class BeatController {
         sortBy = 'createdAt',
         sortOrder = 'desc',
         genre,
-        artist,
-        minBpm,
-        maxBpm,
         tags,
         isFree,
       } = req.query;
 
       const filters = {};
       if (genre) filters.genre = genre;
-      if (artist) filters.artist = artist;
-      if (minBpm) filters.minBpm = parseInt(minBpm);
-      if (maxBpm) filters.maxBpm = parseInt(maxBpm);
       if (tags) filters.tags = tags.split(',');
       if (isFree !== undefined) filters.isFree = isFree === 'true';
 
@@ -103,7 +185,7 @@ export class BeatController {
         pagination: result.pagination,
       });
     } catch (error) {
-      logger.error(`Error in getAllBeats controller: ${error.message}`);
+      logger.error('Error in getAllBeats controller', { error: error.message });
       res.status(500).json({
         success: false,
         message: 'Error retrieving beats',
@@ -119,15 +201,20 @@ export class BeatController {
    */
   static async getBeatById(req, res) {
     try {
-      const { id } = req.params;
+      // Si el middleware requireBeatAccess ya cargó el beat, usarlo
+      let beat = req.beat;
 
-      const beat = await BeatService.getBeatById(id);
-
+      // Si no, cargarlo (para compatibilidad con rutas sin middleware)
       if (!beat) {
-        return res.status(404).json({
-          success: false,
-          message: 'Beat not found',
-        });
+        const { id } = req.params;
+        beat = await BeatService.getBeatById(id);
+
+        if (!beat) {
+          return res.status(404).json({
+            success: false,
+            message: 'Beat not found',
+          });
+        }
       }
 
       res.status(200).json({
@@ -136,7 +223,10 @@ export class BeatController {
         data: beat,
       });
     } catch (error) {
-      logger.error(`Error in getBeatById controller: ${error.message}`);
+      logger.error('Error in getBeatById controller', {
+        beatId: req.params.id,
+        error: error.message,
+      });
 
       // Error de ID inválido
       if (error.name === 'CastError') {
@@ -164,10 +254,7 @@ export class BeatController {
       const { id } = req.params;
       const updateData = req.body;
 
-      // Remover campos que no se deben actualizar directamente
-      delete updateData._id;
-      delete updateData.createdAt;
-      delete updateData.stats; // Las stats se actualizan por métodos específicos
+      // Note: Protected fields removal is handled in the service
 
       const updatedBeat = await BeatService.updateBeat(id, updateData);
 
@@ -178,7 +265,7 @@ export class BeatController {
         });
       }
 
-      logger.info(`Beat updated via API: ${id}`);
+      logger.info('Beat updated via API', { beatId: id, userId: req.user?.id });
 
       res.status(200).json({
         success: true,
@@ -186,7 +273,10 @@ export class BeatController {
         data: updatedBeat,
       });
     } catch (error) {
-      logger.error(`Error in updateBeat controller: ${error.message}`);
+      logger.error('Error in updateBeat controller', {
+        beatId: req.params.id,
+        error: error.message,
+      });
 
       if (error.name === 'ValidationError') {
         return res.status(400).json({
@@ -232,14 +322,17 @@ export class BeatController {
         });
       }
 
-      logger.info(`Beat deleted via API: ${id}`);
+      logger.info('Beat deleted via API', { beatId: id, userId: req.user?.id });
 
       res.status(200).json({
         success: true,
         message: 'Beat deleted successfully',
       });
     } catch (error) {
-      logger.error(`Error in deleteBeat controller: ${error.message}`);
+      logger.error('Error in deleteBeat controller', {
+        beatId: req.params.id,
+        error: error.message,
+      });
 
       if (error.name === 'CastError') {
         return res.status(400).json({
@@ -284,7 +377,10 @@ export class BeatController {
         searchTerm: searchTerm.trim(),
       });
     } catch (error) {
-      logger.error(`Error in searchBeats controller: ${error.message}`);
+      logger.error('Error in searchBeats controller', {
+        searchTerm: req.query.q,
+        error: error.message,
+      });
       res.status(500).json({
         success: false,
         message: 'Error performing search',
@@ -297,11 +393,13 @@ export class BeatController {
   /**
    * PLAY - Incrementar reproducciones
    * POST /api/v1/beats/:id/play
+   * Requiere autenticación. Si el beat es privado, solo el propietario puede reproducirlo.
    */
   static async playBeat(req, res) {
     try {
       const { id } = req.params;
 
+      // El middleware requireBeatAccess ya verificó permisos y cargó el beat
       const beat = await BeatService.incrementPlays(id);
 
       if (!beat) {
@@ -310,6 +408,8 @@ export class BeatController {
           message: 'Beat not found',
         });
       }
+
+      logger.info('Beat played', { beatId: id, userId: req.user.id });
 
       res.status(200).json({
         success: true,
@@ -320,10 +420,69 @@ export class BeatController {
         },
       });
     } catch (error) {
-      logger.error(`Error in playBeat controller: ${error.message}`);
+      logger.error('Error in playBeat controller', {
+        beatId: req.params.id,
+        error: error.message,
+      });
       res.status(500).json({
         success: false,
         message: 'Error updating play count',
+        error:
+          process.env.NODE_ENV === 'development' ? error.message : undefined,
+      });
+    }
+  }
+
+  /**
+   * MY BEATS - Obtener beats del usuario autenticado
+   * GET /api/v1/beats/my-beats
+   */
+  static async getMyBeats(req, res) {
+    try {
+      const userId = req.user.id;
+
+      const {
+        page = 1,
+        limit = 10,
+        sortBy = 'createdAt',
+        sortOrder = 'desc',
+        includePrivate = 'true',
+        genre,
+        tags,
+        isFree,
+      } = req.query;
+
+      const filters = {};
+      if (genre) filters.genre = genre;
+      if (tags) filters.tags = tags.split(',');
+      if (isFree !== undefined) filters.isFree = isFree === 'true';
+
+      const options = {
+        page: parseInt(page),
+        limit: Math.min(parseInt(limit), 50), // Máximo 50 por página
+        sortBy,
+        sortOrder,
+        includePrivate: includePrivate === 'true',
+        ...filters,
+      };
+
+      const result = await BeatService.getUserBeats(userId, options);
+
+      res.status(200).json({
+        success: true,
+        message: 'User beats retrieved successfully',
+        data: result.beats,
+        pagination: result.pagination,
+        userId: result.userId,
+      });
+    } catch (error) {
+      logger.error('Error in getMyBeats controller', {
+        userId: req.user.id,
+        error: error.message,
+      });
+      res.status(500).json({
+        success: false,
+        message: 'Error retrieving user beats',
         error:
           process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
@@ -344,7 +503,7 @@ export class BeatController {
         data: stats,
       });
     } catch (error) {
-      logger.error(`Error in getStats controller: ${error.message}`);
+      logger.error('Error in getStats controller', { error: error.message });
       res.status(500).json({
         success: false,
         message: 'Error retrieving statistics',

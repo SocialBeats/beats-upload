@@ -30,10 +30,23 @@ export default function aboutRoutes(app) {
       ],
       components: {
         securitySchemes: {
-          bearerAuth: {
-            type: 'http',
-            scheme: 'bearer',
-            bearerFormat: 'JWT',
+          gatewayAuth: {
+            type: 'apiKey',
+            in: 'header',
+            name: 'x-gateway-authenticated',
+            description: 'Header de autenticación inyectado por el API Gateway',
+          },
+          userId: {
+            type: 'apiKey',
+            in: 'header',
+            name: 'x-user-id',
+            description: 'ID del usuario autenticado',
+          },
+          userRoles: {
+            type: 'apiKey',
+            in: 'header',
+            name: 'x-roles',
+            description: 'Roles del usuario (separados por comas)',
           },
         },
       },

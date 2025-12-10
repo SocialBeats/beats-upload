@@ -1,17 +1,42 @@
 import express from 'express';
 import { BeatController } from '../controllers/beatController.js';
+import {
+  requireAuth,
+  requireOwnership,
+  requireBeatAccess,
+} from '../middlewares/authorizationMiddleware.js';
+import {
+  validateCreateBeat,
+  validateUpdateBeat,
+  validateQueryParams,
+} from '../middlewares/validationMiddleware.js';
 
 const router = express.Router();
 
 /**
  * @swagger
  * components:
+ *   securitySchemes:
+ *     gatewayAuth:
+ *       type: apiKey
+ *       in: header
+ *       name: x-gateway-authenticated
+ *       description: "Header de autenticación inyectado por el API Gateway. Debe ser 'true'"
+ *     userId:
+ *       type: apiKey
+ *       in: header
+ *       name: x-user-id
+ *       description: "ID del usuario autenticado, inyectado por el API Gateway"
+ *     userRoles:
+ *       type: apiKey
+ *       in: header
+ *       name: x-roles
+ *       description: "Roles del usuario separados por comas, inyectado por el API Gateway"
  *   schemas:
  *     Beat:
  *       type: object
  *       required:
  *         - title
- *         - artist
  *         - genre
  *         - bpm
  *         - duration
@@ -24,10 +49,21 @@ const router = express.Router();
  *           type: string
  *           maxLength: 100
  *           description: Título del beat
- *         artist:
- *           type: string
- *           maxLength: 50
- *           description: Nombre del artista
+ *         createdBy:
+ *           type: object
+ *           description: Información del usuario creador
+ *           properties:
+ *             userId:
+ *               type: string
+ *               description: ID del usuario
+ *             username:
+ *               type: string
+ *               description: Nombre de usuario
+ *             roles:
+ *               type: array
+ *               items:
+ *                 type: string
+ *               description: Roles del usuario
  *         genre:
  *           type: string
  *           enum: [Hip Hop, Trap, R&B, Pop, Rock, Electronic, Jazz, Reggaeton, Other]
@@ -49,9 +85,15 @@ const router = express.Router();
  *         audio:
  *           type: object
  *           properties:
+ *             s3Key:
+ *               type: string
+ *               description: Clave S3 del archivo de audio
+ *             s3CoverKey:
+ *               type: string
+ *               description: Clave S3 de la portada (opcional)
  *             url:
  *               type: string
- *               description: URL del archivo de audio
+ *               description: URL pública del archivo de audio (virtual property)
  *             filename:
  *               type: string
  *               description: Nombre del archivo
@@ -78,12 +120,10 @@ const router = express.Router();
  *         updatedAt:
  *           type: string
  *           format: date-time
- *
  *     BeatInput:
  *       type: object
  *       required:
  *         - title
- *         - artist
  *         - genre
  *         - bpm
  *         - duration
@@ -93,10 +133,6 @@ const router = express.Router();
  *           type: string
  *           maxLength: 100
  *           example: "Summer Vibes"
- *         artist:
- *           type: string
- *           maxLength: 50
- *           example: "DJ Producer"
  *         genre:
  *           type: string
  *           enum: [Hip Hop, Trap, R&B, Pop, Rock, Electronic, Jazz, Reggaeton, Other]
@@ -122,14 +158,19 @@ const router = express.Router();
  *         audio:
  *           type: object
  *           required:
- *             - url
+ *             - s3Key
  *             - filename
  *             - size
  *             - format
  *           properties:
- *             url:
+ *             s3Key:
  *               type: string
- *               example: "https://storage.example.com/beats/summer-vibes.mp3"
+ *               description: "S3 key obtenido del endpoint /upload-url"
+ *               example: "beats/user123/1732819200000-summer-vibes.mp3"
+ *             s3CoverKey:
+ *               type: string
+ *               description: "S3 key opcional para la imagen de portada"
+ *               example: "beats/covers/user123/1732819200000-cover.jpg"
  *             filename:
  *               type: string
  *               example: "summer-vibes.mp3"
@@ -140,7 +181,95 @@ const router = express.Router();
  *               type: string
  *               enum: [mp3, wav, flac, aac]
  *               example: "mp3"
+ *         pricing:
+ *           type: object
+ *           properties:
+ *             isFree:
+ *               type: boolean
+ *               default: true
+ *             price:
+ *               type: number
+ *               minimum: 0
+ *               example: 0
+ *         isPublic:
+ *           type: boolean
+ *           default: true
+ *           description: Si el beat es público o privado
  */
+
+/**
+ * @swagger
+ * /api/v1/beats/upload-url:
+ *   post:
+ *     tags:
+ *       - Beats
+ *     summary: Generate presigned URL for audio upload
+ *     description: |
+ *       Generates a presigned URL for direct upload of audio files to S3.
+ *       The URL is valid for 60 seconds. After uploading to S3, use the returned s3Key
+ *       to create the beat via POST /api/v1/beats. Requiere autenticación.
+ *     security:
+ *       - gatewayAuth: []
+ *         userId: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - extension
+ *               - mimetype
+ *             properties:
+ *               extension:
+ *                 type: string
+ *                 enum: [mp3, wav, flac, aac]
+ *                 example: "mp3"
+ *                 description: File extension without the dot
+ *               mimetype:
+ *                 type: string
+ *                 example: "audio/mpeg"
+ *                 description: MIME type of the audio file
+ *               size:
+ *                 type: number
+ *                 example: 5242880
+ *                 description: File size in bytes (max 50MB)
+ *     responses:
+ *       200:
+ *         description: Presigned URL generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Upload URL generated successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     uploadUrl:
+ *                       type: string
+ *                       example: "https://social-beats-storage.s3.eu-north-1.amazonaws.com/users/anonymous/abc-123.mp3?X-Amz-..."
+ *                       description: Presigned URL for PUT request to S3
+ *                     s3Key:
+ *                       type: string
+ *                       example: "users/anonymous/abc-123.mp3"
+ *                       description: S3 key to use when creating the beat
+ *                     expiresIn:
+ *                       type: number
+ *                       example: 60
+ *                       description: URL expiration time in seconds
+ *       400:
+ *         description: Invalid request (missing fields, invalid file type, size exceeded)
+ *       500:
+ *         description: Server error generating presigned URL
+ */
+// Requiere autenticación para generar URLs de carga
+router.post('/upload-url', requireAuth, BeatController.getUploadUrl);
 
 /**
  * @swagger
@@ -149,7 +278,10 @@ const router = express.Router();
  *     tags:
  *       - Beats
  *     summary: Crear un nuevo beat
- *     description: Crea un nuevo beat en la plataforma
+ *     description: Crea un nuevo beat en la plataforma. Requiere autenticación a través del API Gateway.
+ *     security:
+ *       - gatewayAuth: []
+ *         userId: []
  *     requestBody:
  *       required: true
  *       content:
@@ -177,7 +309,8 @@ const router = express.Router();
  *       500:
  *         description: Error interno del servidor
  */
-router.post('/', BeatController.createBeat);
+// Crear beat: requiere autenticación y validación
+router.post('/', requireAuth, validateCreateBeat, BeatController.createBeat);
 
 /**
  * @swagger
@@ -276,7 +409,8 @@ router.post('/', BeatController.createBeat);
  *                     hasPrev:
  *                       type: boolean
  */
-router.get('/', BeatController.getAllBeats);
+// Obtener todos los beats: público con validación de query params
+router.get('/', validateQueryParams, BeatController.getAllBeats);
 
 /**
  * @swagger
@@ -314,6 +448,121 @@ router.get('/', BeatController.getAllBeats);
  *         description: Término de búsqueda inválido
  */
 router.get('/search', BeatController.searchBeats);
+
+/**
+ * @swagger
+ * /api/v1/beats/my-beats:
+ *   get:
+ *     tags:
+ *       - Beats
+ *     summary: Obtener mis beats
+ *     description: Obtiene todos los beats del usuario autenticado (incluye beats privados). Requiere autenticación a través del API Gateway.
+ *     security:
+ *       - gatewayAuth: []
+ *         userId: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Número de página
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *           maximum: 50
+ *         description: Cantidad de elementos por página
+ *       - in: query
+ *         name: includePrivate
+ *         schema:
+ *           type: boolean
+ *           default: true
+ *         description: Incluir beats privados en los resultados
+ *       - in: query
+ *         name: genre
+ *         schema:
+ *           type: string
+ *         description: Filtrar por género
+ *       - in: query
+ *         name: minBpm
+ *         schema:
+ *           type: integer
+ *         description: BPM mínimo
+ *       - in: query
+ *         name: maxBpm
+ *         schema:
+ *           type: integer
+ *         description: BPM máximo
+ *       - in: query
+ *         name: tags
+ *         schema:
+ *           type: string
+ *         description: Filtrar por tags (separados por coma)
+ *       - in: query
+ *         name: isFree
+ *         schema:
+ *           type: boolean
+ *         description: Filtrar beats gratuitos/pagos
+ *       - in: query
+ *         name: sortBy
+ *         schema:
+ *           type: string
+ *           default: createdAt
+ *         description: Campo para ordenar
+ *       - in: query
+ *         name: sortOrder
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *           default: desc
+ *         description: Orden de clasificación
+ *     responses:
+ *       200:
+ *         description: Beats del usuario obtenidos exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "User beats retrieved successfully"
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Beat'
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     currentPage:
+ *                       type: integer
+ *                     totalPages:
+ *                       type: integer
+ *                     totalBeats:
+ *                       type: integer
+ *                     hasNext:
+ *                       type: boolean
+ *                     hasPrev:
+ *                       type: boolean
+ *                 userId:
+ *                   type: string
+ *                   description: ID del usuario propietario de los beats
+ *       401:
+ *         description: No autenticado - falta header de autenticación del gateway
+ *       500:
+ *         description: Error interno del servidor
+ */
+router.get(
+  '/my-beats',
+  requireAuth,
+  validateQueryParams,
+  BeatController.getMyBeats
+);
 
 /**
  * @swagger
@@ -361,12 +610,39 @@ router.get('/stats', BeatController.getStats);
 
 /**
  * @swagger
+ * /api/v1/beats/{id}/audio:
+ *   get:
+ *     tags:
+ *       - Beats
+ *     summary: Stream audio
+ *     description: Redirects to a presigned S3 URL for audio playback
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Beat ID
+ *     responses:
+ *       302:
+ *         description: Redirect to S3
+ *       404:
+ *         description: Beat not found
+ */
+router.get('/:id/audio', BeatController.streamAudio);
+
+/**
+ * @swagger
  * /api/v1/beats/{id}:
  *   get:
  *     tags:
  *       - Beats
  *     summary: Obtener un beat por ID
- *     description: Obtiene los detalles de un beat específico
+ *     description: Obtiene los detalles de un beat específico. Si el beat es privado, requiere autenticación y ser el propietario.
+ *     security:
+ *       - gatewayAuth: []
+ *         userId: []
+ *       - {}
  *     parameters:
  *       - in: path
  *         name: id
@@ -395,7 +671,8 @@ router.get('/stats', BeatController.getStats);
  *       400:
  *         description: ID de beat inválido
  */
-router.get('/:id', BeatController.getBeatById);
+// Obtener un beat: si es privado, requiere acceso autorizado
+router.get('/:id', requireBeatAccess, BeatController.getBeatById);
 
 /**
  * @swagger
@@ -404,7 +681,10 @@ router.get('/:id', BeatController.getBeatById);
  *     tags:
  *       - Beats
  *     summary: Actualizar un beat
- *     description: Actualiza los datos de un beat existente
+ *     description: Actualiza los datos de un beat existente. Requiere ser el propietario del beat o administrador.
+ *     security:
+ *       - gatewayAuth: []
+ *         userId: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -439,7 +719,14 @@ router.get('/:id', BeatController.getBeatById);
  *       400:
  *         description: Error de validación
  */
-router.put('/:id', BeatController.updateBeat);
+// Actualizar beat: requiere autenticación, ser propietario y validación
+router.put(
+  '/:id',
+  requireAuth,
+  requireOwnership,
+  validateUpdateBeat,
+  BeatController.updateBeat
+);
 
 /**
  * @swagger
@@ -448,7 +735,10 @@ router.put('/:id', BeatController.updateBeat);
  *     tags:
  *       - Beats
  *     summary: Eliminar un beat
- *     description: Elimina un beat permanentemente de la base de datos.
+ *     description: Elimina un beat permanentemente de la base de datos. Requiere ser el propietario del beat o administrador.
+ *     security:
+ *       - gatewayAuth: []
+ *         userId: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -475,7 +765,8 @@ router.put('/:id', BeatController.updateBeat);
  *       400:
  *         description: ID de beat inválido
  */
-router.delete('/:id', BeatController.deleteBeat);
+// Eliminar beat: requiere autenticación y ser propietario
+router.delete('/:id', requireAuth, requireOwnership, BeatController.deleteBeat);
 
 /**
  * @swagger
@@ -484,7 +775,10 @@ router.delete('/:id', BeatController.deleteBeat);
  *     tags:
  *       - Beats
  *     summary: Reproducir beat
- *     description: Incrementa el contador de reproducciones del beat
+ *     description: Incrementa el contador de reproducciones del beat. Requiere autenticación. Si el beat es privado, solo el propietario puede reproducirlo.
+ *     security:
+ *       - gatewayAuth: []
+ *         userId: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -513,9 +807,18 @@ router.delete('/:id', BeatController.deleteBeat);
  *                       type: string
  *                     plays:
  *                       type: number
+ *       401:
+ *         description: No autenticado
+ *       403:
+ *         description: Sin permisos para reproducir este beat privado
  *       404:
  *         description: Beat no encontrado
  */
-router.post('/:id/play', BeatController.playBeat);
+router.post(
+  '/:id/play',
+  requireAuth,
+  requireBeatAccess,
+  BeatController.playBeat
+);
 
 export default router;
