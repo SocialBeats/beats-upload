@@ -42,7 +42,7 @@ describe('BeatController', () => {
       body: {},
       params: {},
       query: {},
-      user: { id: 'user123' },
+      user: { id: 'user123', username: 'testuser' },
     };
     res = {
       status: vi.fn().mockReturnThis(),
@@ -176,7 +176,7 @@ describe('BeatController', () => {
           title: 'New Beat',
           createdBy: {
             userId: 'user123',
-            username: 'user123',
+            username: 'testuser',
             roles: [],
           },
         })
