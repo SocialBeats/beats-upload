@@ -98,7 +98,7 @@ export class BeatController {
       if (req.user) {
         beatData.createdBy = {
           userId: req.user.id, // Este valor viene del header x-user-id
-          username: req.user.username || req.user.id,
+          username: req.user.username,
           roles: req.user.roles || [],
         };
       }
