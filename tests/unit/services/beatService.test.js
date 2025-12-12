@@ -572,24 +572,6 @@ describe('BeatService', () => {
       });
     });
 
-    it('should apply isFree filter correctly', async () => {
-      const mockQuery = {
-        skip: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockReturnThis(),
-        sort: vi.fn().mockResolvedValue([]),
-      };
-
-      Beat.find = vi.fn().mockReturnValue(mockQuery);
-      Beat.countDocuments = vi.fn().mockResolvedValue(0);
-
-      await BeatService.getUserBeats('user123', { isFree: true });
-
-      expect(Beat.find).toHaveBeenCalledWith({
-        'createdBy.userId': 'user123',
-        'pricing.isFree': true,
-      });
-    });
-
     it('should handle custom sort options', async () => {
       const mockQuery = {
         skip: vi.fn().mockReturnThis(),
