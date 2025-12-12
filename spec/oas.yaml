@@ -106,13 +106,6 @@ components:
                 - wav
                 - flac
                 - aac
-        pricing:
-          type: object
-          properties:
-            isFree:
-              type: boolean
-            price:
-              type: number
         stats:
           type: object
           properties:
@@ -200,16 +193,6 @@ components:
                 - flac
                 - aac
               example: mp3
-        pricing:
-          type: object
-          properties:
-            isFree:
-              type: boolean
-              default: true
-            price:
-              type: number
-              minimum: 0
-              example: 0
         isPublic:
           type: boolean
           default: true
@@ -479,11 +462,6 @@ paths:
             type: string
           description: Filtrar por tags (separados por coma)
         - in: query
-          name: isFree
-          schema:
-            type: boolean
-          description: Filtrar beats gratuitos/pagos
-        - in: query
           name: sortBy
           schema:
             type: string
@@ -612,11 +590,6 @@ paths:
           schema:
             type: string
           description: Filtrar por tags (separados por coma)
-        - in: query
-          name: isFree
-          schema:
-            type: boolean
-          description: Filtrar beats gratuitos/pagos
         - in: query
           name: sortBy
           schema:

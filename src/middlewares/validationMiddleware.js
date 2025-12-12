@@ -110,19 +110,6 @@ export const validateCreateBeat = (req, res, next) => {
     });
   }
 
-  // Validar pricing si está presente
-  if (req.body.pricing) {
-    if (
-      req.body.pricing.isFree === false &&
-      (!req.body.pricing.price || req.body.pricing.price <= 0)
-    ) {
-      errors.push({
-        field: 'pricing.price',
-        message: 'Paid beats must have a price greater than 0',
-      });
-    }
-  }
-
   // Si hay errores, devolverlos
   if (errors.length > 0) {
     logger.warn(`Validation failed for createBeat: ${JSON.stringify(errors)}`);
@@ -142,7 +129,7 @@ export const validateCreateBeat = (req, res, next) => {
  */
 export const validateUpdateBeat = (req, res, next) => {
   const errors = [];
-  const { title, genre, key, tags, description, pricing } = req.body;
+  const { title, genre, key, tags, description } = req.body;
 
   // Validar title si está presente
   if (title !== undefined) {
@@ -221,16 +208,6 @@ export const validateUpdateBeat = (req, res, next) => {
     });
   }
 
-  // Validar pricing si está presente
-  if (pricing !== undefined) {
-    if (pricing.isFree === false && (!pricing.price || pricing.price <= 0)) {
-      errors.push({
-        field: 'pricing.price',
-        message: 'Paid beats must have a price greater than 0',
-      });
-    }
-  }
-
   // Prevenir actualización de campos sensibles
   const forbiddenFields = ['_id', 'createdAt', 'createdBy', 'stats'];
   forbiddenFields.forEach((field) => {
@@ -285,12 +262,7 @@ export const validateQueryParams = (req, res, next) => {
 
   // Validar sortBy
   if (sortBy !== undefined) {
-    const validSortFields = [
-      'createdAt',
-      'title',
-      'stats.plays',
-      'pricing.price',
-    ];
+    const validSortFields = ['createdAt', 'title', 'stats.plays'];
     if (!validSortFields.includes(sortBy)) {
       errors.push({
         field: 'sortBy',

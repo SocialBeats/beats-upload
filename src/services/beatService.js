@@ -528,8 +528,6 @@ export class BeatService {
       const query = { ...baseQuery };
       if (filters.genre) query.genre = filters.genre;
       if (filters.tags) query.tags = { $in: filters.tags };
-      if (filters.isFree !== undefined)
-        query['pricing.isFree'] = filters.isFree;
 
       const [beats, totalBeats] = await Promise.all([
         Beat.find({ ...query })

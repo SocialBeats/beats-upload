@@ -758,25 +758,6 @@ describe('BeatController', () => {
       );
     });
 
-    it('should handle isFree filter', async () => {
-      req.query = { isFree: 'true' };
-      const mockResult = {
-        beats: [],
-        pagination: { currentPage: 1, totalPages: 0, totalBeats: 0 },
-        userId: 'user123',
-      };
-      BeatService.getUserBeats.mockResolvedValue(mockResult);
-
-      await BeatController.getMyBeats(req, res);
-
-      expect(BeatService.getUserBeats).toHaveBeenCalledWith(
-        'user123',
-        expect.objectContaining({
-          isFree: true,
-        })
-      );
-    });
-
     it('should handle custom sorting', async () => {
       req.query = { sortBy: 'title', sortOrder: 'asc' };
       const mockResult = {

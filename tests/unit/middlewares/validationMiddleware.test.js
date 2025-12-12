@@ -313,24 +313,6 @@ describe('Validation Middleware', () => {
         validateCreateBeat(req, res, next);
         expect(next).toHaveBeenCalled();
       });
-
-      it('should fail if paid beat has no price', () => {
-        req.body = {
-          ...validBeatData,
-          pricing: { isFree: false, price: 0 },
-        };
-        validateCreateBeat(req, res, next);
-        expect(res.status).toHaveBeenCalledWith(400);
-      });
-
-      it('should pass if paid beat has valid price', () => {
-        req.body = {
-          ...validBeatData,
-          pricing: { isFree: false, price: 9.99 },
-        };
-        validateCreateBeat(req, res, next);
-        expect(next).toHaveBeenCalled();
-      });
     });
 
     it('should collect multiple errors', () => {
@@ -444,20 +426,6 @@ describe('Validation Middleware', () => {
 
       it('should pass with valid description', () => {
         req.body = { description: 'Updated description' };
-        validateUpdateBeat(req, res, next);
-        expect(next).toHaveBeenCalled();
-      });
-    });
-
-    describe('Pricing validation', () => {
-      it('should fail if paid beat has no price', () => {
-        req.body = { pricing: { isFree: false, price: 0 } };
-        validateUpdateBeat(req, res, next);
-        expect(res.status).toHaveBeenCalledWith(400);
-      });
-
-      it('should pass with valid pricing', () => {
-        req.body = { pricing: { isFree: false, price: 19.99 } };
         validateUpdateBeat(req, res, next);
         expect(next).toHaveBeenCalled();
       });
@@ -582,12 +550,7 @@ describe('Validation Middleware', () => {
       });
 
       it('should pass with all valid sortBy fields', () => {
-        const validSortFields = [
-          'createdAt',
-          'title',
-          'stats.plays',
-          'pricing.price',
-        ];
+        const validSortFields = ['createdAt', 'title', 'stats.plays'];
         validSortFields.forEach((sortBy) => {
           vi.clearAllMocks();
           req.query = { sortBy };

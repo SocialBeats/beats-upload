@@ -79,24 +79,6 @@ const beatSchema = new mongoose.Schema(
       },
     },
 
-    // Información de precios (si es comercial)
-    pricing: {
-      isFree: {
-        type: Boolean,
-        default: true,
-      },
-      price: {
-        type: Number,
-        min: 0,
-        default: 0,
-      },
-      currency: {
-        type: String,
-        default: 'USD',
-        enum: ['USD', 'EUR', 'GBP'],
-      },
-    },
-
     // Estadísticas de engagement
     stats: {
       plays: {
@@ -168,11 +150,6 @@ beatSchema.virtual('formattedDuration').get(function () {
 
 // Middleware pre-save para validaciones adicionales
 beatSchema.pre('save', function (next) {
-  // Validar que si no es gratis, tenga precio
-  if (!this.pricing.isFree && this.pricing.price <= 0) {
-    next(new Error('Paid beats must have a price greater than 0'));
-  }
-
   // Limpiar tags duplicados
   this.tags = [...new Set(this.tags)];
 
@@ -185,7 +162,6 @@ beatSchema.statics.findWithFilters = function (filters = {}) {
 
   if (filters.genre) query.genre = filters.genre;
   if (filters.tags) query.tags = { $in: filters.tags };
-  if (filters.isFree !== undefined) query['pricing.isFree'] = filters.isFree;
 
   return this.find(query).sort({ createdAt: -1 });
 };

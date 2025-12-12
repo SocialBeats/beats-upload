@@ -160,13 +160,11 @@ export class BeatController {
         sortOrder = 'desc',
         genre,
         tags,
-        isFree,
       } = req.query;
 
       const filters = {};
       if (genre) filters.genre = genre;
       if (tags) filters.tags = tags.split(',');
-      if (isFree !== undefined) filters.isFree = isFree === 'true';
 
       const options = {
         page: parseInt(page),
@@ -449,13 +447,11 @@ export class BeatController {
         includePrivate = 'true',
         genre,
         tags,
-        isFree,
       } = req.query;
 
       const filters = {};
       if (genre) filters.genre = genre;
       if (tags) filters.tags = tags.split(',');
-      if (isFree !== undefined) filters.isFree = isFree === 'true';
 
       const options = {
         page: parseInt(page),

@@ -103,13 +103,6 @@ const router = express.Router();
  *             format:
  *               type: string
  *               enum: [mp3, wav, flac, aac]
- *         pricing:
- *           type: object
- *           properties:
- *             isFree:
- *               type: boolean
- *             price:
- *               type: number
  *         stats:
  *           type: object
  *           properties:
@@ -181,16 +174,6 @@ const router = express.Router();
  *               type: string
  *               enum: [mp3, wav, flac, aac]
  *               example: "mp3"
- *         pricing:
- *           type: object
- *           properties:
- *             isFree:
- *               type: boolean
- *               default: true
- *             price:
- *               type: number
- *               minimum: 0
- *               example: 0
  *         isPublic:
  *           type: boolean
  *           default: true
@@ -360,11 +343,6 @@ router.post('/', requireAuth, validateCreateBeat, BeatController.createBeat);
  *           type: string
  *         description: Filtrar por tags (separados por coma)
  *       - in: query
- *         name: isFree
- *         schema:
- *           type: boolean
- *         description: Filtrar beats gratuitos/pagos
- *       - in: query
  *         name: sortBy
  *         schema:
  *           type: string
@@ -500,11 +478,6 @@ router.get('/search', BeatController.searchBeats);
  *         schema:
  *           type: string
  *         description: Filtrar por tags (separados por coma)
- *       - in: query
- *         name: isFree
- *         schema:
- *           type: boolean
- *         description: Filtrar beats gratuitos/pagos
  *       - in: query
  *         name: sortBy
  *         schema:
