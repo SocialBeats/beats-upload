@@ -473,7 +473,7 @@ export class BeatService {
       const searchQuery = {
         $or: [
           { title: { $regex: searchTerm, $options: 'i' } },
-          { artist: { $regex: searchTerm, $options: 'i' } },
+          { 'createdBy.username': { $regex: searchTerm, $options: 'i' } },
           { tags: { $regex: searchTerm, $options: 'i' } },
           { description: { $regex: searchTerm, $options: 'i' } },
         ],
