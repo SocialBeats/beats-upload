@@ -5,6 +5,12 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import logger from './logger.js';
 import { connectDB, disconnectDB } from './src/db.js';
+import {
+  startKafkaConsumer,
+  isKafkaEnabled,
+  consumer,
+  producer,
+} from './src/services/kafkaConsumer.js';
 // import your middlewares here
 import verifyToken from './src/middlewares/authMiddlewares.js';
 // import your routes here
@@ -39,6 +45,13 @@ let server;
 if (process.env.NODE_ENV !== 'test') {
   await connectDB();
 
+  if (isKafkaEnabled()) {
+    logger.warn('Kafka is enabled, trying to connect');
+    await startKafkaConsumer();
+  } else {
+    logger.warn('Kafka is not enabled');
+  }
+
   server = app.listen(PORT, () => {
     logger.warn(`Using log level: ${process.env.LOG_LEVEL}`);
     logger.info(`API running at http://localhost:${PORT}`);
@@ -51,6 +64,16 @@ if (process.env.NODE_ENV !== 'test') {
 async function gracefulShutdown(signal) {
   logger.warn(`${signal} received. Starting secure shutdown...`);
 
+  try {
+    logger.warn('Disconnecting Kafka consumer...');
+    await consumer.disconnect();
+    logger.warn('Kafka consumer disconnected.');
+    logger.warn('Disconnecting Kafka producer...');
+    await producer.disconnect();
+    logger.warn('Kafka producer disconnected.');
+  } catch (err) {
+    logger.error('Error disconnecting Kafka:', err);
+  }
   if (server) {
     server.close(async () => {
       logger.info(

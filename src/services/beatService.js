@@ -1,5 +1,6 @@
 import { Beat } from '../models/index.js';
 import logger from '../../logger.js';
+import { producer, isKafkaEnabled } from './kafkaConsumer.js';
 import {
   S3Client,
   DeleteObjectCommand,
@@ -165,6 +166,27 @@ export class BeatService {
 
       const beat = new Beat(beatData);
       const savedBeat = await beat.save();
+
+      if (isKafkaEnabled()) {
+        try {
+          await producer.send({
+            topic: 'beats-interaction-group',
+            messages: [
+              {
+                value: JSON.stringify({
+                  type: 'BEAT_CREATED',
+                  payload: savedBeat,
+                }),
+              },
+            ],
+          });
+        } catch (kafkaError) {
+          logger.error('Failed to publish BEAT_CREATED event', {
+            error: kafkaError.message,
+          });
+        }
+      }
+
       logger.info('Beat created successfully', { beatId: savedBeat._id });
       return savedBeat;
     } catch (error) {
@@ -359,6 +381,27 @@ export class BeatService {
       }
 
       logger.info('Beat updated successfully', { beatId });
+
+      if (isKafkaEnabled()) {
+        try {
+          await producer.send({
+            topic: 'beats-interaction-group',
+            messages: [
+              {
+                value: JSON.stringify({
+                  type: 'BEAT_UPDATED',
+                  payload: updatedBeat,
+                }),
+              },
+            ],
+          });
+        } catch (kafkaError) {
+          logger.error('Failed to publish BEAT_UPDATED event', {
+            error: kafkaError.message,
+          });
+        }
+      }
+
       return updatedBeat;
     } catch (error) {
       logger.error('Error updating beat', { beatId, error: error.message });
@@ -427,6 +470,27 @@ export class BeatService {
       }
 
       logger.info('Beat permanently deleted', { beatId });
+
+      if (isKafkaEnabled()) {
+        try {
+          await producer.send({
+            topic: 'beats-interaction-group',
+            messages: [
+              {
+                value: JSON.stringify({
+                  type: 'BEAT_DELETED',
+                  payload: { _id: beatId },
+                }),
+              },
+            ],
+          });
+        } catch (kafkaError) {
+          logger.error('Failed to publish BEAT_DELETED event', {
+            error: kafkaError.message,
+          });
+        }
+      }
+
       return true;
     } catch (error) {
       logger.error('Error permanently deleting beat', {
@@ -449,7 +513,32 @@ export class BeatService {
         return null;
       }
 
-      return await beat.incrementPlays();
+      const updatedBeat = await beat.incrementPlays();
+
+      if (isKafkaEnabled()) {
+        try {
+          await producer.send({
+            topic: 'beats-interaction-group',
+            messages: [
+              {
+                value: JSON.stringify({
+                  type: 'BEAT_PLAYS_INCREMENTED',
+                  payload: updatedBeat,
+                }),
+              },
+            ],
+          });
+        } catch (kafkaError) {
+          logger.error(
+            'Failed to publish BEAT_PLAYS_INCREMENTED event (incrementPlays)',
+            {
+              error: kafkaError.message,
+            }
+          );
+        }
+      }
+
+      return updatedBeat;
     } catch (error) {
       logger.error('Error incrementing plays', {
         beatId,

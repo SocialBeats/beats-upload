@@ -9,6 +9,7 @@ import {
 } from 'vitest';
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
+import { isKafkaEnabled } from '../../src/services/kafkaConsumer.js';
 // Remove static import
 // import { BeatService } from '../../src/services/beatService.js';
 // import { Beat } from '../../src/models/index.js';
@@ -38,6 +39,21 @@ vi.mock('music-metadata', () => ({
   parseStream: vi.fn().mockResolvedValue({
     format: { codec: 'MPEG 1 Layer 3', duration: 120 },
   }),
+}));
+
+vi.mock('../../src/services/kafkaConsumer.js', () => ({
+  producer: {
+    connect: vi.fn(),
+    send: vi.fn(),
+    disconnect: vi.fn(),
+  },
+  consumer: {
+    connect: vi.fn(),
+    subscribe: vi.fn(),
+    run: vi.fn(),
+  },
+  startKafkaConsumer: vi.fn(),
+  isKafkaEnabled: vi.fn(),
 }));
 
 describe('BeatService Integration Tests (with S3)', () => {
