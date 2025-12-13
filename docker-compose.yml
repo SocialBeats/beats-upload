@@ -2,7 +2,7 @@ services:
   mongodb:
     restart: unless-stopped
     image: mongo:latest
-    container_name: mongodb
+    container_name: beats-upload-mongodb
     environment:
       - MONGO_INITDB_ROOT_USERNAME=${MONGOADMIN}
       - MONGO_INITDB_ROOT_PASSWORD=${MONGOPASS}
