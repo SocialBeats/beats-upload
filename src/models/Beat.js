@@ -126,6 +126,16 @@ const beatSchema = new mongoose.Schema(
       virtuals: true,
       transform: function (doc, ret) {
         delete ret.__v;
+        if (ret.audio && ret.audio.s3Key) {
+          const cdnDomain = process.env.CDN_DOMAIN || '';
+          const baseUrl = cdnDomain.endsWith('/')
+            ? cdnDomain.slice(0, -1)
+            : cdnDomain;
+          const key = ret.audio.s3Key.startsWith('/')
+            ? ret.audio.s3Key.slice(1)
+            : ret.audio.s3Key;
+          ret.audio.url = `${baseUrl}/${key}`;
+        }
         return ret;
       },
     },
