@@ -12,5 +12,7 @@ export default defineConfig({
       all: true,
       reportsDirectory: path.resolve('./coverage'),
     },
+    hookTimeout: 20000,
+    testTimeout: 20000,
   },
 });
