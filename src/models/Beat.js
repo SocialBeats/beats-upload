@@ -77,6 +77,16 @@ const beatSchema = new mongoose.Schema(
         bitrate: Number, // kbps
         sampleRate: Number, // Hz
       },
+      // Waveform simple para visualización (array de ~100-200 picos)
+      waveform: {
+        type: [Number],
+        default: [],
+        select: false, // No traer por defecto en listados para ahorrar ancho de banda
+      },
+      isWaveformGenerated: {
+        type: Boolean,
+        default: false,
+      },
     },
 
     // Estadísticas de engagement
@@ -135,6 +145,13 @@ const beatSchema = new mongoose.Schema(
             ? ret.audio.s3Key.slice(1)
             : ret.audio.s3Key;
           ret.audio.url = `${baseUrl}/${key}`;
+
+          if (ret.audio.s3CoverKey) {
+            const coverKey = ret.audio.s3CoverKey.startsWith('/')
+              ? ret.audio.s3CoverKey.slice(1)
+              : ret.audio.s3CoverKey;
+            ret.audio.coverUrl = `${baseUrl}/${coverKey}`;
+          }
         }
         return ret;
       },
@@ -166,6 +183,12 @@ beatSchema.pre('save', function (next) {
   next();
 });
 
+// Instance method to increment plays
+beatSchema.methods.incrementPlays = function () {
+  this.stats.plays += 1;
+  return this.save();
+};
+
 // Método estático para buscar beats por filtros
 beatSchema.statics.findWithFilters = function (filters = {}) {
   const query = { isPublic: true };
@@ -174,12 +197,6 @@ beatSchema.statics.findWithFilters = function (filters = {}) {
   if (filters.tags) query.tags = { $in: filters.tags };
 
   return this.find(query).sort({ createdAt: -1 });
-};
-
-// Método de instancia para incrementar reproducciones
-beatSchema.methods.incrementPlays = function () {
-  this.stats.plays += 1;
-  return this.save();
 };
 
 export default mongoose.model('Beat', beatSchema);

@@ -394,20 +394,23 @@ describe('BeatService', () => {
     it('should increment plays for a beat', async () => {
       const mockBeat = {
         _id: 'beat123',
-        incrementPlays: vi.fn().mockResolvedValue({ stats: { plays: 1 } }),
+        stats: { plays: 1 },
       };
 
-      Beat.findById = vi.fn().mockResolvedValue(mockBeat);
+      Beat.findByIdAndUpdate = vi.fn().mockResolvedValue(mockBeat);
 
       const result = await BeatService.incrementPlays('beat123');
 
-      expect(Beat.findById).toHaveBeenCalledWith('beat123');
-      expect(mockBeat.incrementPlays).toHaveBeenCalled();
+      expect(Beat.findByIdAndUpdate).toHaveBeenCalledWith(
+        'beat123',
+        { $inc: { 'stats.plays': 1 } },
+        { new: true }
+      );
       expect(result.stats.plays).toBe(1);
     });
 
     it('should return null if beat not found', async () => {
-      Beat.findById = vi.fn().mockResolvedValue(null);
+      Beat.findByIdAndUpdate = vi.fn().mockResolvedValue(null);
 
       const result = await BeatService.incrementPlays('beat123');
 
@@ -415,7 +418,7 @@ describe('BeatService', () => {
     });
 
     it('should throw error on database failure', async () => {
-      Beat.findById = vi.fn().mockRejectedValue(new Error('DB Error'));
+      Beat.findByIdAndUpdate = vi.fn().mockRejectedValue(new Error('DB Error'));
 
       await expect(BeatService.incrementPlays('beat123')).rejects.toThrow(
         'DB Error'

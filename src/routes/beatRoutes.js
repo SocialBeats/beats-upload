@@ -794,4 +794,49 @@ router.post(
   BeatController.playBeat
 );
 
+/**
+ * @swagger
+ * /api/v1/beats/{id}/download:
+ *   get:
+ *     tags:
+ *       - Beats
+ *     summary: Descargar beat
+ *     description: Genera una URL de descarga y registra la estadística. Solo si beat.isDownloadable = true.
+ *     security:
+ *       - gatewayAuth: []
+ *         userId: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID del beat
+ *     responses:
+ *       200:
+ *         description: URL de descarga generada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     downloadUrl:
+ *                       type: string
+ *                     stats:
+ *                       type: object
+ *                       properties:
+ *                          downloads:
+ *                             type: number
+ *       403:
+ *         description: Este beat no permite descargas
+ *       404:
+ *         description: Beat no encontrado
+ */
+router.get('/:id/download', requireAuth, BeatController.downloadBeat);
+
 export default router;
