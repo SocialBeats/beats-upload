@@ -19,7 +19,16 @@ const s3Client = new S3Client({
   },
 });
 
-const ALLOWED_EXTENSIONS = ['mp3', 'wav', 'flac', 'aac'];
+const ALLOWED_EXTENSIONS = [
+  'mp3',
+  'wav',
+  'flac',
+  'aac',
+  'jpg',
+  'jpeg',
+  'png',
+  'webp',
+];
 const ALLOWED_MIME_TYPES = [
   'audio/mpeg',
   'audio/wav',
@@ -27,6 +36,9 @@ const ALLOWED_MIME_TYPES = [
   'audio/flac',
   'audio/aac',
   'audio/x-m4a',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
 ];
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
@@ -99,7 +111,7 @@ export class BeatService {
   /**
    * Generate presigned URL for audio playback
    * @param {string} beatId - ID of the beat
-   * @returns {Promise<string>} Presigned URL
+   * @returns {Promise<string>} Public URL or Presigned URL
    */
   static async getAudioPresignedUrl(beatId) {
     try {
@@ -121,6 +133,36 @@ export class BeatService {
       return `${baseUrl}/${key}`;
     } catch (error) {
       logger.error('Error generating audio URL', {
+        error: error.message,
+        beatId,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Generate presigned URL for audio download (forces save as)
+   * @param {string} beatId - ID of the beat
+   * @returns {Promise<string>} S3 Presigned URL with Content-Disposition
+   */
+  static async getDownloadPresignedUrl(beatId) {
+    try {
+      const beat = await Beat.findById(beatId);
+      if (!beat || !beat.audio?.s3Key) {
+        throw new Error('Beat or audio file not found');
+      }
+
+      const command = new GetObjectCommand({
+        Bucket: process.env.AWS_BUCKET_NAME,
+        Key: beat.audio.s3Key,
+        ResponseContentDisposition: `attachment; filename="${beat.audio.filename || 'beat.mp3'}"`,
+      });
+
+      // Valid for 5 minutes
+      const url = await getSignedUrl(s3Client, command, { expiresIn: 300 });
+      return url;
+    } catch (error) {
+      logger.error('Error generating download URL', {
         error: error.message,
         beatId,
       });
@@ -188,6 +230,22 @@ export class BeatService {
       }
 
       logger.info('Beat created successfully', { beatId: savedBeat._id });
+
+      // Iniciar generación de waveform en background (fire and forget)
+      // Importamos dinámicamente para evitar dependencias circulares si las hubiera, aunque aquí es limpio.
+      // Pero mejor: import al inicio del archivo si no hay ciclo.
+      // Como no definí import arriba para no romper diff, lo hago aquí o asumo que lo añadiste.
+      // Voy a asumir que puedo añadir el import arriba en otro paso, o usar import dinámico aquí.
+      // Usaré import dinámico para ser seguro y no tocar imports arriba ahora mismo.
+      import('./waveformService.js').then(({ WaveformService }) => {
+        WaveformService.generateAndSaveWaveform(savedBeat, s3Client).catch(
+          (err) =>
+            logger.error('Background waveform generation failed', {
+              error: err.message,
+            })
+        );
+      });
+
       return savedBeat;
     } catch (error) {
       logger.error('Error creating beat', { error: error.message });
@@ -313,6 +371,19 @@ export class BeatService {
       delete updateData.createdBy;
       delete updateData.stats;
 
+      // CRITICAL: Flatten 'audio' object to dot notation to prevent overwriting
+      // the entire 'audio' subdocument (which would erase 'waveform' and 'isWaveformGenerated')
+      let newS3Key = null;
+      if (updateData.audio) {
+        newS3Key = updateData.audio.s3Key;
+        if (typeof updateData.audio === 'object') {
+          for (const [key, value] of Object.entries(updateData.audio)) {
+            updateData[`audio.${key}`] = value;
+          }
+          delete updateData.audio;
+        }
+      }
+
       // 1. Obtener el beat original para saber si hay que borrar archivo viejo
       const oldBeat = await Beat.findById(beatId);
 
@@ -330,23 +401,20 @@ export class BeatService {
         });
       } catch (dbError) {
         // Compensation: If DB update fails, delete the NEW file if one was uploaded
-        if (
-          updateData.audio?.s3Key &&
-          updateData.audio.s3Key !== oldBeat.audio?.s3Key
-        ) {
+        if (newS3Key && newS3Key !== oldBeat.audio?.s3Key) {
           try {
             await s3Client.send(
               new DeleteObjectCommand({
                 Bucket: process.env.AWS_BUCKET_NAME,
-                Key: updateData.audio.s3Key,
+                Key: newS3Key,
               })
             );
             logger.info('Compensated: Deleted orphaned new S3 file', {
-              s3Key: updateData.audio.s3Key,
+              s3Key: newS3Key,
             });
           } catch (s3Error) {
             logger.error('Failed to compensate new S3 file deletion', {
-              s3Key: updateData.audio.s3Key,
+              s3Key: newS3Key,
               error: s3Error.message,
             });
           }
@@ -358,8 +426,8 @@ export class BeatService {
       if (
         updatedBeat &&
         oldBeat.audio?.s3Key &&
-        updateData.audio?.s3Key &&
-        oldBeat.audio.s3Key !== updateData.audio.s3Key
+        newS3Key &&
+        oldBeat.audio.s3Key !== newS3Key
       ) {
         try {
           await s3Client.send(
@@ -508,12 +576,16 @@ export class BeatService {
    */
   static async incrementPlays(beatId) {
     try {
-      const beat = await Beat.findById(beatId);
-      if (!beat) {
-        return null;
-      }
+      // Usar operación atómica $inc para evitar condiciones de carrera
+      const updatedBeat = await Beat.findByIdAndUpdate(
+        beatId,
+        { $inc: { 'stats.plays': 1 } },
+        { new: true }
+      );
 
-      const updatedBeat = await beat.incrementPlays();
+      if (!updatedBeat) {
+        return null; // Beat no encontrado
+      }
 
       if (isKafkaEnabled()) {
         try {
@@ -541,6 +613,54 @@ export class BeatService {
       return updatedBeat;
     } catch (error) {
       logger.error('Error incrementing plays', {
+        beatId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Incrementar descargas de un beat
+   * @param {string} beatId - ID del beat
+   * @returns {Promise<Object|null>} Beat actualizado
+   */
+  static async incrementDownloads(beatId) {
+    try {
+      // Usar operación atómica $inc para evitar condiciones de carrera
+      const updatedBeat = await Beat.findByIdAndUpdate(
+        beatId,
+        { $inc: { 'stats.downloads': 1 } },
+        { new: true }
+      );
+
+      if (!updatedBeat) {
+        return null;
+      }
+
+      if (isKafkaEnabled()) {
+        try {
+          await producer.send({
+            topic: 'beats-interaction-group',
+            messages: [
+              {
+                value: JSON.stringify({
+                  type: 'BEAT_DOWNLOADS_INCREMENTED',
+                  payload: updatedBeat,
+                }),
+              },
+            ],
+          });
+        } catch (kafkaError) {
+          logger.error('Failed to publish BEAT_DOWNLOADS_INCREMENTED event', {
+            error: kafkaError.message,
+          });
+        }
+      }
+
+      return updatedBeat;
+    } catch (error) {
+      logger.error('Error incrementing downloads', {
         beatId,
         error: error.message,
       });
