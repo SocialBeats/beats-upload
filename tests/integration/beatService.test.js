@@ -9,6 +9,7 @@ import {
 } from 'vitest';
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
+import { isKafkaEnabled } from '../../src/services/kafkaConsumer.js';
 // Remove static import
 // import { BeatService } from '../../src/services/beatService.js';
 // import { Beat } from '../../src/models/index.js';
@@ -17,8 +18,12 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 const mocks = vi.hoisted(() => {
   return {
     send: vi.fn(),
-    DeleteObjectCommand: vi.fn(),
-    GetObjectCommand: vi.fn(),
+    DeleteObjectCommand: vi.fn(function (args) {
+      this.input = args;
+    }),
+    GetObjectCommand: vi.fn(function (args) {
+      this.input = args;
+    }),
   };
 });
 
@@ -38,6 +43,21 @@ vi.mock('music-metadata', () => ({
   parseStream: vi.fn().mockResolvedValue({
     format: { codec: 'MPEG 1 Layer 3', duration: 120 },
   }),
+}));
+
+vi.mock('../../src/services/kafkaConsumer.js', () => ({
+  producer: {
+    connect: vi.fn(),
+    send: vi.fn(),
+    disconnect: vi.fn(),
+  },
+  consumer: {
+    connect: vi.fn(),
+    subscribe: vi.fn(),
+    run: vi.fn(),
+  },
+  startKafkaConsumer: vi.fn(),
+  isKafkaEnabled: vi.fn(),
 }));
 
 describe('BeatService Integration Tests (with S3)', () => {
@@ -156,7 +176,15 @@ describe('BeatService Integration Tests (with S3)', () => {
         Bucket: process.env.AWS_BUCKET_NAME,
         Key: 'beats/delete.mp3',
       });
-      expect(mocks.send).toHaveBeenCalledTimes(1);
+      // Note: send may be called more than once due to background waveform generation
+      expect(mocks.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({
+            Bucket: process.env.AWS_BUCKET_NAME,
+            Key: 'beats/delete.mp3',
+          }),
+        })
+      );
 
       // Verify DB deletion
       const dbBeat = await Beat.findById(beat._id);
