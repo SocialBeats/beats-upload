@@ -30,12 +30,6 @@ const beatSchema = new mongoose.Schema(
       },
     },
 
-    key: {
-      type: String,
-      enum: ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'],
-      default: null,
-    },
-
     // Tags y metadata
     tags: [
       {
