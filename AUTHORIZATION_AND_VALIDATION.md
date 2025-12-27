@@ -140,7 +140,6 @@ Valida todos los campos requeridos al **crear un beat**.
 - `key` (opcional, enum válido)
 - `tags` (opcional, array, máximo 10)
 - `description` (opcional, max 500 caracteres)
-- `pricing` (valida coherencia: si no es gratis, debe tener precio > 0)
 
 **Ejemplo de error:**
 
@@ -176,7 +175,7 @@ Valida parámetros de consulta para GET requests.
 - `page` (entero positivo)
 - `limit` (1-50)
 - `minBpm`, `maxBpm` (rango válido)
-- `sortBy` (campo válido: `createdAt`, `title`, `artist`, `bpm`, `stats.plays`, `pricing.price`)
+- `sortBy` (campo válido: `createdAt`, `title`, `artist`, `bpm`, `stats.plays`)
 - `sortOrder` (`asc` o `desc`)
 
 ## 🔄 Flujo de Request Completo

@@ -1,3 +1,5 @@
+version: "3.8"
+
 services:
   mongodb:
     restart: unless-stopped
@@ -44,23 +46,18 @@ services:
     restart: unless-stopped
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile-dev
     container_name: beats-upload
     environment:
       - MONGOURL=${MONGOURL}
       - MONGOADMIN=${MONGOADMIN}
       - MONGOPASS=${MONGOPASS}
-      - NODE_ENV=production
+      - NODE_ENV=development
       - PORT=${PORT}
       - LOG_LEVEL=${LOG_LEVEL}
       - JWT_SECRET=${JWT_SECRET}
       - API_TITLE=${API_TITLE}
       - API_DESCRIPTION=${API_DESCRIPTION}
-      - AWS_REGION=${AWS_REGION}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_BUCKET_NAME=${AWS_BUCKET_NAME}
-      - CDN_DOMAIN=${CDN_DOMAIN}
     depends_on:
       - mongodb
       - kafka
@@ -68,10 +65,14 @@ services:
       - socialbeats-network
     ports:
       - "${PORT}:${PORT}"
+    volumes:
+      - ./:/app:cached
+      - /app/node_modules
+    command: nodemon --watch /app --legacy-watch --polling-interval 1000 main.js
 
 volumes:
   mongo-data:
 
 networks:
   socialbeats-network:
-    external: true
+    driver: bridge
