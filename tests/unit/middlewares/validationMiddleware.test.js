@@ -255,35 +255,6 @@ describe('Validation Middleware', () => {
     });
 
     describe('Optional fields validation', () => {
-      it('should fail if key is invalid', () => {
-        req.body = { ...validBeatData, key: 'X' };
-        validateCreateBeat(req, res, next);
-        expect(res.status).toHaveBeenCalledWith(400);
-      });
-
-      it('should pass with all valid keys', () => {
-        const validKeys = [
-          'C',
-          'C#',
-          'D',
-          'D#',
-          'E',
-          'F',
-          'F#',
-          'G',
-          'G#',
-          'A',
-          'A#',
-          'B',
-        ];
-        validKeys.forEach((key) => {
-          vi.clearAllMocks();
-          req.body = { ...validBeatData, key };
-          validateCreateBeat(req, res, next);
-          expect(next).toHaveBeenCalled();
-        });
-      });
-
       it('should fail if tags is not an array', () => {
         req.body = { ...validBeatData, tags: 'tag1,tag2' };
         validateCreateBeat(req, res, next);
@@ -382,20 +353,6 @@ describe('Validation Middleware', () => {
     });
 
     // BPM and Duration validation tests removed as these fields no longer exist
-
-    describe('Key validation', () => {
-      it('should fail if key is invalid', () => {
-        req.body = { key: 'X' };
-        validateUpdateBeat(req, res, next);
-        expect(res.status).toHaveBeenCalledWith(400);
-      });
-
-      it('should pass with valid key', () => {
-        req.body = { key: 'C#' };
-        validateUpdateBeat(req, res, next);
-        expect(next).toHaveBeenCalled();
-      });
-    });
 
     describe('Tags validation', () => {
       it('should fail if tags is not an array', () => {

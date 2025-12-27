@@ -69,30 +69,6 @@ export const validateCreateBeat = (req, res, next) => {
     }
   }
 
-  // Validar key si está presente
-  if (req.body.key) {
-    const validKeys = [
-      'C',
-      'C#',
-      'D',
-      'D#',
-      'E',
-      'F',
-      'F#',
-      'G',
-      'G#',
-      'A',
-      'A#',
-      'B',
-    ];
-    if (!validKeys.includes(req.body.key)) {
-      errors.push({
-        field: 'key',
-        message: `Key must be one of: ${validKeys.join(', ')}`,
-      });
-    }
-  }
-
   // Validar tags si están presentes
   if (req.body.tags) {
     if (!Array.isArray(req.body.tags)) {
@@ -129,7 +105,7 @@ export const validateCreateBeat = (req, res, next) => {
  */
 export const validateUpdateBeat = (req, res, next) => {
   const errors = [];
-  const { title, genre, key, tags, description } = req.body;
+  const { title, genre, tags, description } = req.body;
 
   // Validar title si está presente
   if (title !== undefined) {
@@ -163,30 +139,6 @@ export const validateUpdateBeat = (req, res, next) => {
       errors.push({
         field: 'genre',
         message: `Genre must be one of: ${validGenres.join(', ')}`,
-      });
-    }
-  }
-
-  // Validar key si está presente
-  if (key !== undefined) {
-    const validKeys = [
-      'C',
-      'C#',
-      'D',
-      'D#',
-      'E',
-      'F',
-      'F#',
-      'G',
-      'G#',
-      'A',
-      'A#',
-      'B',
-    ];
-    if (!validKeys.includes(key)) {
-      errors.push({
-        field: 'key',
-        message: `Key must be one of: ${validKeys.join(', ')}`,
       });
     }
   }
