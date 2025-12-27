@@ -1,3 +1,33 @@
+# Release v1.0.0
+
+## Features
+- feat: added features to sync with dashboard microservice via kafka
+- feat: removed key attribute from beat model
+- feat: beat download and cover integration
+- feat: added kafka configuration
+- feat: microservice template missing docker features added
+
+## Tests
+No test changes.
+## Documentation
+No documentation changes.
+## Fixes
+- fix: added vitest config for new testing suite
+- fix: modify docker-compose.yml mongodb datbabase container name
+- fix: fixed serch beat by username
+- fix: set beat user username from api gateway headers
+- fix: remove pricing atributes from Beat model
+
+## Continuous integration (CI)
+No CI changes.
+## Other changes
+- Merge pull request #18 from SocialBeats/develop
+- Merge pull request #17 from SocialBeats/beats-download
+
+## Full commit history
+
+For full commit history, see [here](https://github.com/SocialBeats/beats-upload/compare/v0.0.1...v1.0.0).
+
 # Release v0.0.1
 
 ## Features
