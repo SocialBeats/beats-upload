@@ -205,30 +205,16 @@ export class BeatService {
           );
         }
       }
+      // Ensure metrics field exists and start as 'pending' so other services/frontend
+      // can detect that metrics are being computed.
+      beatData.metrics = beatData.metrics || {};
+      // Do not overwrite an explicit value set upstream, but ensure default pending
+      if (!beatData.metrics.status) {
+        beatData.metrics.status = 'pending';
+      }
 
       const beat = new Beat(beatData);
       const savedBeat = await beat.save();
-
-      if (isKafkaEnabled()) {
-        try {
-          await producer.send({
-            topic: 'beats-interaction-group',
-            messages: [
-              {
-                value: JSON.stringify({
-                  type: 'BEAT_CREATED',
-                  payload: savedBeat,
-                }),
-              },
-            ],
-          });
-        } catch (kafkaError) {
-          logger.error('Failed to publish BEAT_CREATED event', {
-            error: kafkaError.message,
-          });
-        }
-      }
-
       logger.info('Beat created successfully', { beatId: savedBeat._id });
 
       // Iniciar generación de waveform en background (fire and forget)
@@ -246,6 +232,56 @@ export class BeatService {
         );
       });
 
+      if (isKafkaEnabled()) {
+        try {
+          await producer.send({
+            topic: 'beats-interaction-group',
+            messages: [
+              {
+                value: JSON.stringify({
+                  type: 'BEAT_CREATED',
+                  payload: savedBeat,
+                }),
+              },
+            ],
+          });
+          // Also publish a lightweight event to `beats-events` so analytics service
+          // (which listens on `beats-events`) receives the expected payload.
+          try {
+            const analyticsPayload = {
+              type: 'BEAT_CREATED',
+              payload: {
+                beatId: savedBeat._id,
+                audioUrl: savedBeat.audio?.s3Key
+                  ? `${process.env.CDN_DOMAIN || ''}/${savedBeat.audio.s3Key}`
+                  : savedBeat.audio?.url || null,
+                userId: savedBeat.createdBy?.userId || null,
+              },
+            };
+
+            await producer.send({
+              topic: 'beats-events',
+              messages: [{ value: JSON.stringify(analyticsPayload) }],
+            });
+
+            logger.info('Published BEAT_CREATED to Kafka topics', {
+              beatId: savedBeat._id,
+              topics: ['beats-interaction-group', 'beats-events'],
+            });
+          } catch (err) {
+            logger.error('Failed to publish BEAT_CREATED to beats-events', {
+              error: err.message,
+              beatId: savedBeat._id,
+            });
+          }
+        } catch (kafkaError) {
+          logger.error('Failed to publish BEAT_CREATED event', {
+            error: kafkaError.message,
+          });
+        }
+      }
+
+      logger.info('Beat created successfully', { beatId: savedBeat._id });
       return savedBeat;
     } catch (error) {
       logger.error('Error creating beat', { error: error.message });

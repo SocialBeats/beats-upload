@@ -18,8 +18,12 @@ import { isKafkaEnabled } from '../../src/services/kafkaConsumer.js';
 const mocks = vi.hoisted(() => {
   return {
     send: vi.fn(),
-    DeleteObjectCommand: vi.fn(),
-    GetObjectCommand: vi.fn(),
+    DeleteObjectCommand: vi.fn(function (args) {
+      this.input = args;
+    }),
+    GetObjectCommand: vi.fn(function (args) {
+      this.input = args;
+    }),
   };
 });
 
@@ -172,7 +176,15 @@ describe('BeatService Integration Tests (with S3)', () => {
         Bucket: process.env.AWS_BUCKET_NAME,
         Key: 'beats/delete.mp3',
       });
-      expect(mocks.send).toHaveBeenCalledTimes(1);
+      // Note: send may be called more than once due to background waveform generation
+      expect(mocks.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({
+            Bucket: process.env.AWS_BUCKET_NAME,
+            Key: 'beats/delete.mp3',
+          }),
+        })
+      );
 
       // Verify DB deletion
       const dbBeat = await Beat.findById(beat._id);

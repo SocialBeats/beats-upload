@@ -97,6 +97,21 @@ const beatSchema = new mongoose.Schema(
       },
     },
 
+    // Estado y datos de métricas calculadas por el worker/analytics
+    metrics: {
+      status: {
+        type: String,
+        enum: ['pending', 'processing', 'done'],
+        default: 'pending',
+      },
+      computedAt: {
+        type: Date,
+      },
+      data: {
+        type: mongoose.Schema.Types.Mixed,
+      },
+    },
+
     isPublic: {
       type: Boolean,
       default: true,
