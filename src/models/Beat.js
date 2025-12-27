@@ -30,12 +30,6 @@ const beatSchema = new mongoose.Schema(
       },
     },
 
-    key: {
-      type: String,
-      enum: ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'],
-      default: null,
-    },
-
     // Tags y metadata
     tags: [
       {
@@ -77,23 +71,15 @@ const beatSchema = new mongoose.Schema(
         bitrate: Number, // kbps
         sampleRate: Number, // Hz
       },
-    },
-
-    // Información de precios (si es comercial)
-    pricing: {
-      isFree: {
+      // Waveform simple para visualización (array de ~100-200 picos)
+      waveform: {
+        type: [Number],
+        default: [],
+        select: false, // No traer por defecto en listados para ahorrar ancho de banda
+      },
+      isWaveformGenerated: {
         type: Boolean,
-        default: true,
-      },
-      price: {
-        type: Number,
-        min: 0,
-        default: 0,
-      },
-      currency: {
-        type: String,
-        default: 'USD',
-        enum: ['USD', 'EUR', 'GBP'],
+        default: false,
       },
     },
 
@@ -144,6 +130,23 @@ const beatSchema = new mongoose.Schema(
       virtuals: true,
       transform: function (doc, ret) {
         delete ret.__v;
+        if (ret.audio && ret.audio.s3Key) {
+          const cdnDomain = process.env.CDN_DOMAIN || '';
+          const baseUrl = cdnDomain.endsWith('/')
+            ? cdnDomain.slice(0, -1)
+            : cdnDomain;
+          const key = ret.audio.s3Key.startsWith('/')
+            ? ret.audio.s3Key.slice(1)
+            : ret.audio.s3Key;
+          ret.audio.url = `${baseUrl}/${key}`;
+
+          if (ret.audio.s3CoverKey) {
+            const coverKey = ret.audio.s3CoverKey.startsWith('/')
+              ? ret.audio.s3CoverKey.slice(1)
+              : ret.audio.s3CoverKey;
+            ret.audio.coverUrl = `${baseUrl}/${coverKey}`;
+          }
+        }
         return ret;
       },
     },
@@ -168,16 +171,17 @@ beatSchema.virtual('formattedDuration').get(function () {
 
 // Middleware pre-save para validaciones adicionales
 beatSchema.pre('save', function (next) {
-  // Validar que si no es gratis, tenga precio
-  if (!this.pricing.isFree && this.pricing.price <= 0) {
-    next(new Error('Paid beats must have a price greater than 0'));
-  }
-
   // Limpiar tags duplicados
   this.tags = [...new Set(this.tags)];
 
   next();
 });
+
+// Instance method to increment plays
+beatSchema.methods.incrementPlays = function () {
+  this.stats.plays += 1;
+  return this.save();
+};
 
 // Método estático para buscar beats por filtros
 beatSchema.statics.findWithFilters = function (filters = {}) {
@@ -185,15 +189,8 @@ beatSchema.statics.findWithFilters = function (filters = {}) {
 
   if (filters.genre) query.genre = filters.genre;
   if (filters.tags) query.tags = { $in: filters.tags };
-  if (filters.isFree !== undefined) query['pricing.isFree'] = filters.isFree;
 
   return this.find(query).sort({ createdAt: -1 });
-};
-
-// Método de instancia para incrementar reproducciones
-beatSchema.methods.incrementPlays = function () {
-  this.stats.plays += 1;
-  return this.save();
 };
 
 export default mongoose.model('Beat', beatSchema);

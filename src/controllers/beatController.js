@@ -87,6 +87,73 @@ export class BeatController {
   }
 
   /**
+   * DOWNLOAD BEAT - Get download URL and increment stats
+   * GET /api/v1/beats/:id/download
+   */
+  static async downloadBeat(req, res) {
+    try {
+      const { id } = req.params;
+      const userId = req.user?.id;
+
+      // 1. Get beat to check permissions
+      const beat = await BeatService.getBeatById(id);
+
+      if (!beat) {
+        return res.status(404).json({
+          success: false,
+          message: 'Beat not found',
+        });
+      }
+
+      // 2. Check if downloadable
+      if (!beat.isDownloadable) {
+        return res.status(403).json({
+          success: false,
+          message: 'This beat is not available for download',
+        });
+      }
+
+      // 3. Increment downloads ONLY if not the owner
+      const isOwner = userId && userId === beat.createdBy?.userId;
+
+      let currentDownloads = beat.stats.downloads;
+
+      if (!isOwner) {
+        const updatedBeat = await BeatService.incrementDownloads(id);
+        currentDownloads = updatedBeat.stats.downloads;
+      }
+
+      // 4. Generate Download URL
+      const downloadUrl = await BeatService.getDownloadPresignedUrl(id);
+
+      logger.info('Beat download initiated', { beatId: id, userId, isOwner });
+
+      res.status(200).json({
+        success: true,
+        message: 'Download link generated',
+        data: {
+          downloadUrl,
+          stats: {
+            downloads: currentDownloads,
+            plays: beat.stats.plays,
+          },
+        },
+      });
+    } catch (error) {
+      logger.error('Error in downloadBeat controller', {
+        beatId: req.params.id,
+        error: error.message,
+      });
+      res.status(500).json({
+        success: false,
+        message: 'Error processing download',
+        error:
+          process.env.NODE_ENV === 'development' ? error.message : undefined,
+      });
+    }
+  }
+
+  /**
    * CREATE - Crear un nuevo beat
    * POST /api/v1/beats
    */
@@ -98,7 +165,7 @@ export class BeatController {
       if (req.user) {
         beatData.createdBy = {
           userId: req.user.id, // Este valor viene del header x-user-id
-          username: req.user.username || req.user.id,
+          username: req.user.username,
           roles: req.user.roles || [],
         };
       }
@@ -160,13 +227,11 @@ export class BeatController {
         sortOrder = 'desc',
         genre,
         tags,
-        isFree,
       } = req.query;
 
       const filters = {};
       if (genre) filters.genre = genre;
       if (tags) filters.tags = tags.split(',');
-      if (isFree !== undefined) filters.isFree = isFree === 'true';
 
       const options = {
         page: parseInt(page),
@@ -395,12 +460,24 @@ export class BeatController {
    * POST /api/v1/beats/:id/play
    * Requiere autenticación. Si el beat es privado, solo el propietario puede reproducirlo.
    */
+  /**
+   * PLAY - Incrementar reproducciones
+   * POST /api/v1/beats/:id/play
+   * Requiere autenticación. Si el beat es privado, solo el propietario puede reproducirlo.
+   */
   static async playBeat(req, res) {
     try {
       const { id } = req.params;
+      const userId = req.user?.id;
 
       // El middleware requireBeatAccess ya verificó permisos y cargó el beat
-      const beat = await BeatService.incrementPlays(id);
+      // Pero necesitamos el objeto beat para chequear el owner
+      let beat = req.beat;
+
+      // Si por alguna razón req.beat no está (aunque debería por el middleware), lo buscamos
+      if (!beat) {
+        beat = await BeatService.getBeatById(id);
+      }
 
       if (!beat) {
         return res.status(404).json({
@@ -409,14 +486,27 @@ export class BeatController {
         });
       }
 
-      logger.info('Beat played', { beatId: id, userId: req.user.id });
+      const isOwner = userId && userId === beat.createdBy?.userId;
+      let currentPlays = beat.stats.plays;
+
+      // Increment ONLY if not owner
+      if (!isOwner) {
+        const updatedBeat = await BeatService.incrementPlays(id);
+        currentPlays = updatedBeat.stats.plays;
+        logger.info('Beat played (stats incremented)', { beatId: id, userId });
+      } else {
+        logger.info('Beat played by owner (stats NOT incremented)', {
+          beatId: id,
+          userId,
+        });
+      }
 
       res.status(200).json({
         success: true,
         message: 'Play count updated',
         data: {
           beatId: id,
-          plays: beat.stats.plays,
+          plays: currentPlays,
         },
       });
     } catch (error) {
@@ -449,13 +539,11 @@ export class BeatController {
         includePrivate = 'true',
         genre,
         tags,
-        isFree,
       } = req.query;
 
       const filters = {};
       if (genre) filters.genre = genre;
       if (tags) filters.tags = tags.split(',');
-      if (isFree !== undefined) filters.isFree = isFree === 'true';
 
       const options = {
         page: parseInt(page),

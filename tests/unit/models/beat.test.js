@@ -78,34 +78,6 @@ describe('Beat Model Test', () => {
     expect(err.errors.genre).toBeDefined();
   });
 
-  it('should fail validation if price is invalid for paid beat', async () => {
-    const paidBeatWithInvalidPrice = new Beat({
-      title: 'Paid Beat',
-      artist: 'Test Artist',
-      genre: 'Hip Hop',
-      bpm: 120,
-      duration: 180,
-      audio: {
-        s3Key: 'beats/paid.mp3',
-        filename: 'paid.mp3',
-        size: 1024,
-        format: 'mp3',
-      },
-      pricing: {
-        isFree: false,
-        price: 0,
-      },
-    });
-    let err;
-    try {
-      await paidBeatWithInvalidPrice.save();
-    } catch (error) {
-      err = error;
-    }
-    expect(err).toBeDefined();
-    expect(err.message).toBe('Paid beats must have a price greater than 0');
-  });
-
   // formattedDuration virtual removed as duration field no longer exists
 
   it('should find beats with filters', async () => {
@@ -232,38 +204,5 @@ describe('Beat Model Test', () => {
     const darkBeats = await Beat.findWithFilters({ tags: ['dark'] });
     expect(darkBeats).toHaveLength(1);
     expect(darkBeats[0].title).toBe('Dark Beat');
-  });
-
-  it('should find beats with isFree filter', async () => {
-    await Beat.deleteMany({});
-
-    const freeBeat = new Beat({
-      title: 'Free Beat',
-      genre: 'Hip Hop',
-      bpm: 120,
-      duration: 180,
-      pricing: { isFree: true, price: 0 },
-      audio: { s3Key: 'k1', filename: 'f1', size: 1, format: 'mp3' },
-      isPublic: true,
-    });
-    const paidBeat = new Beat({
-      title: 'Paid Beat',
-      genre: 'Trap',
-      bpm: 140,
-      duration: 180,
-      pricing: { isFree: false, price: 29.99 },
-      audio: { s3Key: 'k2', filename: 'f2', size: 1, format: 'mp3' },
-      isPublic: true,
-    });
-    await freeBeat.save();
-    await paidBeat.save();
-
-    const freeBeats = await Beat.findWithFilters({ isFree: true });
-    expect(freeBeats).toHaveLength(1);
-    expect(freeBeats[0].title).toBe('Free Beat');
-
-    const paidBeats = await Beat.findWithFilters({ isFree: false });
-    expect(paidBeats).toHaveLength(1);
-    expect(paidBeats[0].title).toBe('Paid Beat');
   });
 });
