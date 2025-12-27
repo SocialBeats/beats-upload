@@ -69,30 +69,6 @@ export const validateCreateBeat = (req, res, next) => {
     }
   }
 
-  // Validar key si está presente
-  if (req.body.key) {
-    const validKeys = [
-      'C',
-      'C#',
-      'D',
-      'D#',
-      'E',
-      'F',
-      'F#',
-      'G',
-      'G#',
-      'A',
-      'A#',
-      'B',
-    ];
-    if (!validKeys.includes(req.body.key)) {
-      errors.push({
-        field: 'key',
-        message: `Key must be one of: ${validKeys.join(', ')}`,
-      });
-    }
-  }
-
   // Validar tags si están presentes
   if (req.body.tags) {
     if (!Array.isArray(req.body.tags)) {
@@ -108,19 +84,6 @@ export const validateCreateBeat = (req, res, next) => {
       field: 'description',
       message: 'Description cannot exceed 500 characters',
     });
-  }
-
-  // Validar pricing si está presente
-  if (req.body.pricing) {
-    if (
-      req.body.pricing.isFree === false &&
-      (!req.body.pricing.price || req.body.pricing.price <= 0)
-    ) {
-      errors.push({
-        field: 'pricing.price',
-        message: 'Paid beats must have a price greater than 0',
-      });
-    }
   }
 
   // Si hay errores, devolverlos
@@ -142,7 +105,7 @@ export const validateCreateBeat = (req, res, next) => {
  */
 export const validateUpdateBeat = (req, res, next) => {
   const errors = [];
-  const { title, genre, key, tags, description, pricing } = req.body;
+  const { title, genre, tags, description } = req.body;
 
   // Validar title si está presente
   if (title !== undefined) {
@@ -180,30 +143,6 @@ export const validateUpdateBeat = (req, res, next) => {
     }
   }
 
-  // Validar key si está presente
-  if (key !== undefined) {
-    const validKeys = [
-      'C',
-      'C#',
-      'D',
-      'D#',
-      'E',
-      'F',
-      'F#',
-      'G',
-      'G#',
-      'A',
-      'A#',
-      'B',
-    ];
-    if (!validKeys.includes(key)) {
-      errors.push({
-        field: 'key',
-        message: `Key must be one of: ${validKeys.join(', ')}`,
-      });
-    }
-  }
-
   // Validar tags si están presentes
   if (tags !== undefined) {
     if (!Array.isArray(tags)) {
@@ -219,16 +158,6 @@ export const validateUpdateBeat = (req, res, next) => {
       field: 'description',
       message: 'Description cannot exceed 500 characters',
     });
-  }
-
-  // Validar pricing si está presente
-  if (pricing !== undefined) {
-    if (pricing.isFree === false && (!pricing.price || pricing.price <= 0)) {
-      errors.push({
-        field: 'pricing.price',
-        message: 'Paid beats must have a price greater than 0',
-      });
-    }
   }
 
   // Prevenir actualización de campos sensibles
@@ -285,12 +214,7 @@ export const validateQueryParams = (req, res, next) => {
 
   // Validar sortBy
   if (sortBy !== undefined) {
-    const validSortFields = [
-      'createdAt',
-      'title',
-      'stats.plays',
-      'pricing.price',
-    ];
+    const validSortFields = ['createdAt', 'title', 'stats.plays'];
     if (!validSortFields.includes(sortBy)) {
       errors.push({
         field: 'sortBy',

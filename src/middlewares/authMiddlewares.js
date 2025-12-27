@@ -29,13 +29,14 @@ const verifyToken = (req, res, next) => {
   ) {
     // Intentar extraer info del usuario de los headers personalizados si existen
     const userId = req.headers['x-user-id'];
+    const username = req.headers['x-username'];
     const gatewayAuth = req.headers['x-gateway-authenticated'];
     const roles = req.headers['x-roles'];
 
     if (gatewayAuth === 'true' && userId) {
       req.user = {
         id: userId,
-        'x-user-id': userId,
+        username: username,
         roles: roles ? roles.split(',') : [],
       };
     }
@@ -51,6 +52,7 @@ const verifyToken = (req, res, next) => {
 
   // Verificar autenticación mediante headers del gateway
   const userId = req.headers['x-user-id'];
+  const username = req.headers['x-username'];
   const gatewayAuth = req.headers['x-gateway-authenticated'];
   const roles = req.headers['x-roles'];
 
@@ -76,8 +78,7 @@ const verifyToken = (req, res, next) => {
   // Construir objeto user con la información de los headers
   req.user = {
     id: userId,
-    'x-user-id': userId,
-    username: userId, // Usar el ID como username por defecto
+    username: username, // Usar el ID como username por defecto
     roles: roles ? roles.split(',') : [],
   };
 

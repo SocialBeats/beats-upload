@@ -42,7 +42,7 @@ describe('BeatController', () => {
       body: {},
       params: {},
       query: {},
-      user: { id: 'user123' },
+      user: { id: 'user123', username: 'testuser' },
     };
     res = {
       status: vi.fn().mockReturnThis(),
@@ -176,7 +176,7 @@ describe('BeatController', () => {
           title: 'New Beat',
           createdBy: {
             userId: 'user123',
-            username: 'user123',
+            username: 'testuser',
             roles: [],
           },
         })
@@ -599,6 +599,13 @@ describe('BeatController', () => {
   describe('playBeat', () => {
     it('should increment plays', async () => {
       req.params.id = 'beat1';
+      // Mock getBeatById to return a beat NOT owned by user123
+      BeatService.getBeatById.mockResolvedValue({
+        _id: 'beat1',
+        createdBy: { userId: 'otherUser' },
+        stats: { plays: 0 },
+      });
+
       const mockBeat = { stats: { plays: 1 } };
       BeatService.incrementPlays.mockResolvedValue(mockBeat);
 
@@ -610,7 +617,9 @@ describe('BeatController', () => {
 
     it('should return 404 if beat not found', async () => {
       req.params.id = 'beat1';
-      BeatService.incrementPlays.mockResolvedValue(null);
+      BeatService.getBeatById.mockResolvedValue(null);
+      // incrementPlays won't be called if beat not found via getBeatById logic in controller
+      // BeatService.incrementPlays.mockResolvedValue(null);
 
       await BeatController.playBeat(req, res);
 
@@ -619,6 +628,7 @@ describe('BeatController', () => {
 
     it('should return 500 on generic error', async () => {
       req.params.id = 'beat1';
+      BeatService.getBeatById.mockResolvedValue({ _id: 'beat1' });
       BeatService.incrementPlays.mockRejectedValue(new Error('DB Error'));
 
       await BeatController.playBeat(req, res);
@@ -631,6 +641,7 @@ describe('BeatController', () => {
       process.env.NODE_ENV = 'production';
 
       req.params.id = 'beat1';
+      BeatService.getBeatById.mockResolvedValue({ _id: 'beat1' });
       BeatService.incrementPlays.mockRejectedValue(new Error('DB Error'));
 
       await BeatController.playBeat(req, res);
@@ -754,25 +765,6 @@ describe('BeatController', () => {
         'user123',
         expect.objectContaining({
           tags: ['chill', 'summer', 'trap'],
-        })
-      );
-    });
-
-    it('should handle isFree filter', async () => {
-      req.query = { isFree: 'true' };
-      const mockResult = {
-        beats: [],
-        pagination: { currentPage: 1, totalPages: 0, totalBeats: 0 },
-        userId: 'user123',
-      };
-      BeatService.getUserBeats.mockResolvedValue(mockResult);
-
-      await BeatController.getMyBeats(req, res);
-
-      expect(BeatService.getUserBeats).toHaveBeenCalledWith(
-        'user123',
-        expect.objectContaining({
-          isFree: true,
         })
       );
     });

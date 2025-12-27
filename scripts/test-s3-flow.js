@@ -65,9 +65,6 @@ const runTest = async () => {
         size: Buffer.byteLength(testBody),
         format: 'mp3',
       },
-      pricing: {
-        isFree: true,
-      },
     };
 
     const createdBeat = await BeatService.createBeat(beatData);

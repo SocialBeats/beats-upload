@@ -42,6 +42,7 @@ describe('Auth Middleware', () => {
     req.method = 'GET';
     req.headers['x-gateway-authenticated'] = 'true';
     req.headers['x-user-id'] = 'user123';
+    req.headers['x-username'] = 'testuser';
     req.headers['x-roles'] = 'admin,user';
 
     verifyToken(req, res, next);
@@ -49,7 +50,7 @@ describe('Auth Middleware', () => {
     expect(next).toHaveBeenCalled();
     expect(req.user).toEqual({
       id: 'user123',
-      'x-user-id': 'user123',
+      username: 'testuser',
       roles: ['admin', 'user'],
     });
   });
@@ -104,14 +105,14 @@ describe('Auth Middleware', () => {
     req.method = 'POST';
     req.headers['x-gateway-authenticated'] = 'true';
     req.headers['x-user-id'] = 'user123';
+    req.headers['x-username'] = 'testuser';
     req.headers['x-roles'] = 'user';
 
     verifyToken(req, res, next);
 
     expect(req.user).toEqual({
       id: 'user123',
-      'x-user-id': 'user123',
-      username: 'user123',
+      username: 'testuser',
       roles: ['user'],
     });
     expect(next).toHaveBeenCalled();

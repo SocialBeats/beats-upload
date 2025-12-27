@@ -255,35 +255,6 @@ describe('Validation Middleware', () => {
     });
 
     describe('Optional fields validation', () => {
-      it('should fail if key is invalid', () => {
-        req.body = { ...validBeatData, key: 'X' };
-        validateCreateBeat(req, res, next);
-        expect(res.status).toHaveBeenCalledWith(400);
-      });
-
-      it('should pass with all valid keys', () => {
-        const validKeys = [
-          'C',
-          'C#',
-          'D',
-          'D#',
-          'E',
-          'F',
-          'F#',
-          'G',
-          'G#',
-          'A',
-          'A#',
-          'B',
-        ];
-        validKeys.forEach((key) => {
-          vi.clearAllMocks();
-          req.body = { ...validBeatData, key };
-          validateCreateBeat(req, res, next);
-          expect(next).toHaveBeenCalled();
-        });
-      });
-
       it('should fail if tags is not an array', () => {
         req.body = { ...validBeatData, tags: 'tag1,tag2' };
         validateCreateBeat(req, res, next);
@@ -310,24 +281,6 @@ describe('Validation Middleware', () => {
 
       it('should pass with valid description', () => {
         req.body = { ...validBeatData, description: 'Valid description' };
-        validateCreateBeat(req, res, next);
-        expect(next).toHaveBeenCalled();
-      });
-
-      it('should fail if paid beat has no price', () => {
-        req.body = {
-          ...validBeatData,
-          pricing: { isFree: false, price: 0 },
-        };
-        validateCreateBeat(req, res, next);
-        expect(res.status).toHaveBeenCalledWith(400);
-      });
-
-      it('should pass if paid beat has valid price', () => {
-        req.body = {
-          ...validBeatData,
-          pricing: { isFree: false, price: 9.99 },
-        };
         validateCreateBeat(req, res, next);
         expect(next).toHaveBeenCalled();
       });
@@ -401,20 +354,6 @@ describe('Validation Middleware', () => {
 
     // BPM and Duration validation tests removed as these fields no longer exist
 
-    describe('Key validation', () => {
-      it('should fail if key is invalid', () => {
-        req.body = { key: 'X' };
-        validateUpdateBeat(req, res, next);
-        expect(res.status).toHaveBeenCalledWith(400);
-      });
-
-      it('should pass with valid key', () => {
-        req.body = { key: 'C#' };
-        validateUpdateBeat(req, res, next);
-        expect(next).toHaveBeenCalled();
-      });
-    });
-
     describe('Tags validation', () => {
       it('should fail if tags is not an array', () => {
         req.body = { tags: 'tag1,tag2' };
@@ -444,20 +383,6 @@ describe('Validation Middleware', () => {
 
       it('should pass with valid description', () => {
         req.body = { description: 'Updated description' };
-        validateUpdateBeat(req, res, next);
-        expect(next).toHaveBeenCalled();
-      });
-    });
-
-    describe('Pricing validation', () => {
-      it('should fail if paid beat has no price', () => {
-        req.body = { pricing: { isFree: false, price: 0 } };
-        validateUpdateBeat(req, res, next);
-        expect(res.status).toHaveBeenCalledWith(400);
-      });
-
-      it('should pass with valid pricing', () => {
-        req.body = { pricing: { isFree: false, price: 19.99 } };
         validateUpdateBeat(req, res, next);
         expect(next).toHaveBeenCalled();
       });
@@ -582,12 +507,7 @@ describe('Validation Middleware', () => {
       });
 
       it('should pass with all valid sortBy fields', () => {
-        const validSortFields = [
-          'createdAt',
-          'title',
-          'stats.plays',
-          'pricing.price',
-        ];
+        const validSortFields = ['createdAt', 'title', 'stats.plays'];
         validSortFields.forEach((sortBy) => {
           vi.clearAllMocks();
           req.query = { sortBy };
