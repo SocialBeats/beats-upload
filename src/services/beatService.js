@@ -257,46 +257,23 @@ export class BeatService {
 
       if (isKafkaEnabled()) {
         try {
+          // Use toJSON() to ensure virtuals like audio.url are included
+          const beatPayload = savedBeat.toJSON();
           await producer.send({
-            topic: 'beats-interaction-group',
+            topic: 'beats-events',
             messages: [
               {
                 value: JSON.stringify({
                   type: 'BEAT_CREATED',
-                  payload: savedBeat,
+                  payload: beatPayload,
                 }),
               },
             ],
           });
-          // Also publish a lightweight event to `beats-events` so analytics service
-          // (which listens on `beats-events`) receives the expected payload.
-          try {
-            const analyticsPayload = {
-              type: 'BEAT_CREATED',
-              payload: {
-                beatId: savedBeat._id,
-                audioUrl: savedBeat.audio?.s3Key
-                  ? `${process.env.CDN_DOMAIN || ''}/${savedBeat.audio.s3Key}`
-                  : savedBeat.audio?.url || null,
-                userId: savedBeat.createdBy?.userId || null,
-              },
-            };
-
-            await producer.send({
-              topic: 'beats-events',
-              messages: [{ value: JSON.stringify(analyticsPayload) }],
-            });
-
-            logger.info('Published BEAT_CREATED to Kafka topics', {
-              beatId: savedBeat._id,
-              topics: ['beats-interaction-group', 'beats-events'],
-            });
-          } catch (err) {
-            logger.error('Failed to publish BEAT_CREATED to beats-events', {
-              error: err.message,
-              beatId: savedBeat._id,
-            });
-          }
+          logger.info('Published BEAT_CREATED to Kafka', {
+            beatId: savedBeat._id,
+            topic: 'beats-events',
+          });
         } catch (kafkaError) {
           logger.error('Failed to publish BEAT_CREATED event', {
             error: kafkaError.message,
@@ -359,6 +336,13 @@ export class BeatService {
    */
   static async getAllBeats(options = {}) {
     try {
+      // ============ [DEBUG-TRACE] SERVICIO - ENTRADA ============
+      logger.info(
+        '[DEBUG-TRACE] BeatService.getAllBeats - Options recibidos:',
+        JSON.stringify(options, null, 2)
+      );
+      // ============================================================
+
       const {
         page = 1,
         limit = 10,
@@ -370,13 +354,75 @@ export class BeatService {
       const skip = (page - 1) * limit;
       const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
 
+      // ============ [DEBUG-TRACE] FILTROS EXTRAÍDOS ============
+      logger.info(
+        '[DEBUG-TRACE] Filtros extraídos de options:',
+        JSON.stringify(filters, null, 2)
+      );
+      logger.info(
+        '[DEBUG-TRACE] Paginación: skip=' +
+          skip +
+          ', limit=' +
+          limit +
+          ', sort=' +
+          JSON.stringify(sort)
+      );
+      // ============================================================
+
       // Usar el método estático del modelo para filtros
       const query = Beat.findWithFilters(filters);
+
+      // ============ [DEBUG-TRACE] QUERY OBJECT (CRÍTICO) ============
+      const queryFilter = query.getQuery();
+      logger.info(
+        '[DEBUG-TRACE] 🔍 QUERY OBJECT completo que se enviará a MongoDB:',
+        JSON.stringify(queryFilter, null, 2)
+      );
+      logger.info(
+        '[DEBUG-TRACE] 🔍 Query con options: skip=' +
+          skip +
+          ', limit=' +
+          limit +
+          ', sort=' +
+          JSON.stringify(sort)
+      );
+      // ============================================================
 
       const [beats, totalBeats] = await Promise.all([
         query.skip(skip).limit(parseInt(limit)).sort(sort),
         Beat.countDocuments(query.getQuery()),
       ]);
+
+      // ============ [DEBUG-TRACE] RAW DATA DE BD ============
+      logger.info('[DEBUG-TRACE] 📦 Respuesta RAW de MongoDB:');
+      logger.info('[DEBUG-TRACE] - Tipo de beats:', typeof beats);
+      logger.info(
+        '[DEBUG-TRACE] - Array.isArray(beats):',
+        Array.isArray(beats)
+      );
+      logger.info('[DEBUG-TRACE] - beats.length:', beats?.length);
+      logger.info('[DEBUG-TRACE] - totalBeats (count):', totalBeats);
+      if (beats && beats.length > 0) {
+        logger.info(
+          '[DEBUG-TRACE] - Primer beat (sample):',
+          JSON.stringify(
+            {
+              _id: beats[0]._id,
+              title: beats[0].title,
+              isPublic: beats[0].isPublic,
+              createdAt: beats[0].createdAt,
+              audio: beats[0].audio
+                ? { s3Key: beats[0].audio.s3Key, url: beats[0].audio.url }
+                : 'NO AUDIO',
+            },
+            null,
+            2
+          )
+        );
+      } else {
+        logger.info('[DEBUG-TRACE] ⚠️ NO HAY BEATS EN LA RESPUESTA');
+      }
+      // ============================================================
 
       const pagination = this._getPaginationMetadata(totalBeats, page, limit);
 
@@ -511,16 +557,22 @@ export class BeatService {
 
       if (isKafkaEnabled()) {
         try {
+          // Use toJSON() to ensure virtuals like audio.url are included
+          const beatPayload = updatedBeat.toJSON();
           await producer.send({
-            topic: 'beats-interaction-group',
+            topic: 'beats-events',
             messages: [
               {
                 value: JSON.stringify({
                   type: 'BEAT_UPDATED',
-                  payload: updatedBeat,
+                  payload: beatPayload,
                 }),
               },
             ],
+          });
+          logger.info('Published BEAT_UPDATED to Kafka', {
+            beatId,
+            topic: 'beats-events',
           });
         } catch (kafkaError) {
           logger.error('Failed to publish BEAT_UPDATED event', {
@@ -601,7 +653,7 @@ export class BeatService {
       if (isKafkaEnabled()) {
         try {
           await producer.send({
-            topic: 'beats-interaction-group',
+            topic: 'beats-events',
             messages: [
               {
                 value: JSON.stringify({
@@ -610,6 +662,10 @@ export class BeatService {
                 }),
               },
             ],
+          });
+          logger.info('Published BEAT_DELETED to Kafka', {
+            beatId,
+            topic: 'beats-events',
           });
         } catch (kafkaError) {
           logger.error('Failed to publish BEAT_DELETED event', {
@@ -649,7 +705,7 @@ export class BeatService {
       if (isKafkaEnabled()) {
         try {
           await producer.send({
-            topic: 'beats-interaction-group',
+            topic: 'beats-events',
             messages: [
               {
                 value: JSON.stringify({
@@ -700,7 +756,7 @@ export class BeatService {
       if (isKafkaEnabled()) {
         try {
           await producer.send({
-            topic: 'beats-interaction-group',
+            topic: 'beats-events',
             messages: [
               {
                 value: JSON.stringify({
