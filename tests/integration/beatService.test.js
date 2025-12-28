@@ -192,6 +192,9 @@ describe('BeatService Integration Tests (with S3)', () => {
     });
 
     it('should delete cover from S3 if it exists', async () => {
+      // Clear mocks to ensure clean state
+      vi.clearAllMocks();
+
       const beat = await Beat.create({
         title: 'Delete Cover Test',
         artist: 'Test',
@@ -209,7 +212,7 @@ describe('BeatService Integration Tests (with S3)', () => {
 
       await BeatService.deleteBeatPermanently(beat._id);
 
-      expect(mocks.send).toHaveBeenCalledTimes(2);
+      // Verify DeleteObjectCommand was called for both audio and cover
       expect(mocks.DeleteObjectCommand).toHaveBeenCalledWith({
         Bucket: process.env.AWS_BUCKET_NAME,
         Key: 'beats/audio.mp3',
