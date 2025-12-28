@@ -192,6 +192,9 @@ describe('BeatService Integration Tests (with S3)', () => {
     });
 
     it('should delete cover from S3 if it exists', async () => {
+      // Clear mocks to ensure clean state
+      vi.clearAllMocks();
+
       const beat = await Beat.create({
         title: 'Delete Cover Test',
         artist: 'Test',
