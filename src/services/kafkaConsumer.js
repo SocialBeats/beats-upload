@@ -7,7 +7,7 @@ const kafka = new Kafka({
   brokers: [process.env.KAFKA_BROKER || 'localhost:9092'],
 });
 
-const consumer = kafka.consumer({ groupId: 'beats-interaction-group' });
+const consumer = kafka.consumer({ groupId: 'beats-upload-group' });
 const producer = kafka.producer();
 
 const admin = kafka.admin();
@@ -43,6 +43,21 @@ async function processEvent(event) {
         logger.error('Error processing USER_DELETED event:', error);
         throw error;
       }
+      break;
+
+    case 'USER_CREATED':
+    case 'USER_UPDATED':
+      // Estos eventos no son relevantes para beats-upload, los ignoramos silenciosamente
+      logger.verbose(`Ignored event: ${event.type}`);
+      break;
+
+    case 'BEAT_CREATED':
+    case 'BEAT_UPDATED':
+    case 'BEAT_DELETED':
+    case 'BEAT_PLAYS_INCREMENTED':
+    case 'BEAT_DOWNLOADS_INCREMENTED':
+      // beats-upload produce estos eventos, no necesita procesarlos
+      logger.verbose(`Ignored own event: ${event.type}`);
       break;
 
     default:
