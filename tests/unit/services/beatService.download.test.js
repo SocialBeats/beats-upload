@@ -80,7 +80,7 @@ describe('BeatService - Download & Stats', () => {
       // Verify Kafka event
       expect(producer.send).toHaveBeenCalledWith(
         expect.objectContaining({
-          topic: 'beats-interaction-group',
+          topic: 'beats-events',
           messages: expect.arrayContaining([
             expect.objectContaining({
               value: expect.stringContaining('BEAT_DOWNLOADS_INCREMENTED'),
