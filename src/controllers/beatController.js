@@ -6,8 +6,11 @@ import logger from '../../logger.js';
  */
 export class BeatController {
   /**
-   * UPLOAD URL - Generate presigned URL for direct S3 upload
+   * UPLOAD URL - Generate presigned POST URL for direct S3 upload
    * POST /api/v1/beats/upload-url
+   *
+   * Returns presigned POST data with fields that must be included
+   * in the multipart/form-data upload to S3.
    */
   static async getUploadUrl(req, res) {
     try {
@@ -21,12 +24,28 @@ export class BeatController {
         userId,
       });
 
-      logger.info('Upload URL generated', { userId, extension, mimetype });
+      logger.info('Presigned POST URL generated', {
+        userId,
+        extension,
+        mimetype,
+        fileKey: result.fileKey,
+      });
 
       res.status(200).json({
         success: true,
         message: 'Upload URL generated successfully',
-        data: result,
+        data: {
+          // S3 endpoint URL for POST upload
+          url: result.url,
+          // Required form fields (must be included in multipart/form-data)
+          fields: result.fields,
+          // S3 key to reference when creating the beat
+          fileKey: result.fileKey,
+          // URL expiration time in seconds
+          expiresIn: result.expiresIn,
+          // Maximum allowed file size in bytes
+          maxFileSize: result.maxFileSize,
+        },
       });
     } catch (error) {
       logger.error('Error in getUploadUrl controller', {
