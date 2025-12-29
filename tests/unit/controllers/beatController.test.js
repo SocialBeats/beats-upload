@@ -53,7 +53,13 @@ describe('BeatController', () => {
   describe('getUploadUrl', () => {
     it('should return upload URL for valid input', async () => {
       req.body = { extension: 'mp3', mimetype: 'audio/mpeg' };
-      const mockResult = { uploadUrl: 'url', s3Key: 'key' };
+      const mockResult = {
+        url: 'https://bucket.s3.amazonaws.com/',
+        fields: { key: 'users/user123/uuid.mp3', Policy: 'base64' },
+        fileKey: 'users/user123/uuid.mp3',
+        expiresIn: 60,
+        maxFileSize: 15728640,
+      };
       BeatService.generatePresignedUploadUrl.mockResolvedValue(mockResult);
 
       await BeatController.getUploadUrl(req, res);
@@ -68,7 +74,13 @@ describe('BeatController', () => {
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           success: true,
-          data: mockResult,
+          data: expect.objectContaining({
+            url: mockResult.url,
+            fields: mockResult.fields,
+            fileKey: mockResult.fileKey,
+            expiresIn: mockResult.expiresIn,
+            maxFileSize: mockResult.maxFileSize,
+          }),
         })
       );
     });
@@ -76,7 +88,13 @@ describe('BeatController', () => {
     it('should handle anonymous user (no req.user)', async () => {
       req.user = undefined;
       req.body = { extension: 'mp3', mimetype: 'audio/mpeg' };
-      const mockResult = { uploadUrl: 'url', s3Key: 'key' };
+      const mockResult = {
+        url: 'https://bucket.s3.amazonaws.com/',
+        fields: { key: 'users/anonymous/uuid.mp3' },
+        fileKey: 'users/anonymous/uuid.mp3',
+        expiresIn: 60,
+        maxFileSize: 15728640,
+      };
       BeatService.generatePresignedUploadUrl.mockResolvedValue(mockResult);
 
       await BeatController.getUploadUrl(req, res);
