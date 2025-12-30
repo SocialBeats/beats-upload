@@ -1,3 +1,33 @@
+# Release v2.0.0
+
+## Features
+- feat: add new test cases for presigned url cdn
+- feat: new presigned access to cdn
+- feat: new test cases added for kafka and waveform generation
+- feat: sync OAS with new upload endpoint signature
+- feat: test cases updated to new presigned urls uploading method
+- feat: enhance beats upload by using presigned urls
+
+## Tests
+No test changes.
+## Documentation
+No documentation changes.
+## Fixes
+- fix: kafka integration
+- fix: correct DeleteObjectCommand specific call
+
+## Continuous integration (CI)
+No CI changes.
+## Other changes
+- chore: update CHANGELOG and .version for v1.1.0
+- Merge pull request #21 from SocialBeats/develop
+- Merge pull request #20 from SocialBeats/s3-rate-limit
+- Merge branch 'develop' into s3-rate-limit
+
+## Full commit history
+
+For full commit history, see [here](https://github.com/SocialBeats/beats-upload/compare/v1.1.0...v2.0.0).
+
 # Release v1.1.0
 
 ## Features
