@@ -212,7 +212,8 @@ describe('BeatService Integration Tests (with S3)', () => {
 
       await BeatService.deleteBeatPermanently(beat._id);
 
-      // Verify DeleteObjectCommand was called for both audio and cover
+      // Note: send may be called more than twice due to background waveform generation
+      // We verify the specific DeleteObjectCommand calls instead of exact count
       expect(mocks.DeleteObjectCommand).toHaveBeenCalledWith({
         Bucket: process.env.AWS_BUCKET_NAME,
         Key: 'beats/audio.mp3',
