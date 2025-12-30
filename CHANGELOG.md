@@ -13,6 +13,28 @@ No documentation changes.
 ## Continuous integration (CI)
 No CI changes.
 ## Other changes
+- chore: update CHANGELOG and .version for v1.1.0
+- Merge pull request #19 from SocialBeats/develop
+
+## Full commit history
+
+For full commit history, see [here](https://github.com/SocialBeats/beats-upload/compare/v1.0.0...v1.1.0).
+
+# Release v1.1.0
+
+## Features
+- feat: new test cases added for kafka and waveform generation
+
+## Tests
+No test changes.
+## Documentation
+No documentation changes.
+## Fixes
+- fix: kafka integration
+
+## Continuous integration (CI)
+No CI changes.
+## Other changes
 - Merge pull request #19 from SocialBeats/develop
 
 ## Full commit history
