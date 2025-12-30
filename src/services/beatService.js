@@ -11,6 +11,10 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import { parseStream } from 'music-metadata';
 import { randomUUID } from 'crypto';
+import {
+  generateSignedUrl as generateCloudFrontSignedUrl,
+  checkCloudFrontConfig,
+} from '../utils/cloudfrontSigner.js';
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION,
@@ -133,8 +137,9 @@ export class BeatService {
 
   /**
    * Generate presigned URL for audio playback
+   * Uses CloudFront signed URLs. Throws error if not configured.
    * @param {string} beatId - ID of the beat
-   * @returns {Promise<string>} Public URL or Presigned URL
+   * @returns {Promise<string>} CloudFront Signed URL
    */
   static async getAudioPresignedUrl(beatId) {
     try {
@@ -143,17 +148,32 @@ export class BeatService {
         throw new Error('Beat or audio file not found');
       }
 
-      // Return CloudFront URL
-      const cdnDomain = process.env.CDN_DOMAIN || '';
-      // Ensure we handle potential slash inconsistencies
-      const baseUrl = cdnDomain.endsWith('/')
-        ? cdnDomain.slice(0, -1)
-        : cdnDomain;
+      // Normalize the S3 key (remove leading slash if present)
       const key = beat.audio.s3Key.startsWith('/')
         ? beat.audio.s3Key.slice(1)
         : beat.audio.s3Key;
 
-      return `${baseUrl}/${key}`;
+      // Check CloudFront configuration
+      const cloudFrontStatus = checkCloudFrontConfig();
+
+      if (!cloudFrontStatus.isConfigured) {
+        logger.error('CloudFront signing not configured!', {
+          errors: cloudFrontStatus.errors,
+          beatId,
+        });
+        throw new Error(
+          'CloudFront signing is not configured. ' +
+            'Set CLOUDFRONT_KEY_PAIR_ID, CLOUDFRONT_PRIVATE_KEY_BASE64, and CLOUDFRONT_DOMAIN in environment variables.'
+        );
+      }
+
+      // Generate signed URL
+      const signedUrl = generateCloudFrontSignedUrl(key, {
+        expiresIn: 7200, // 2 hours for streaming
+      });
+
+      logger.debug('Generated CloudFront signed URL', { beatId, key });
+      return signedUrl;
     } catch (error) {
       logger.error('Error generating audio URL', {
         error: error.message,
