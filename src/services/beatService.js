@@ -8,8 +8,13 @@ import {
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import { parseStream } from 'music-metadata';
 import { randomUUID } from 'crypto';
+import {
+  generateSignedUrl as generateCloudFrontSignedUrl,
+  checkCloudFrontConfig,
+} from '../utils/cloudfrontSigner.js';
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION,
@@ -40,16 +45,19 @@ const ALLOWED_MIME_TYPES = [
   'image/png',
   'image/webp',
 ];
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB - Enforced by S3 Policy
+const PRESIGNED_URL_EXPIRY = 60; // 60 seconds
 
 export class BeatService {
   /**
-   * Generate presigned URL for direct S3 upload
+   * Generate presigned POST URL for direct S3 upload with strict policies.
+   * Uses S3 POST policy conditions to enforce file size limits server-side.
+   *
    * @param {Object} params - Upload parameters
    * @param {string} params.extension - File extension (mp3, wav, etc.)
    * @param {string} params.mimetype - MIME type of the file
    * @param {string} params.userId - User ID for folder structure
-   * @returns {Promise<Object>} Presigned URL and s3Key
+   * @returns {Promise<Object>} Presigned POST data: { url, fields, fileKey }
    */
   static async generatePresignedUploadUrl({
     extension,
@@ -58,7 +66,7 @@ export class BeatService {
     userId,
   }) {
     try {
-      // Validate size
+      // Validate size (client-side check, S3 policy enforces server-side)
       if (size && size > MAX_FILE_SIZE) {
         throw new Error(
           `File size exceeds maximum allowed (${MAX_FILE_SIZE / 1024 / 1024}MB)`
@@ -66,52 +74,72 @@ export class BeatService {
       }
 
       // Validate extension
-      if (!ALLOWED_EXTENSIONS.includes(extension.toLowerCase())) {
+      const normalizedExt = extension.toLowerCase();
+      if (!ALLOWED_EXTENSIONS.includes(normalizedExt)) {
         throw new Error(
           `Invalid file extension. Allowed: ${ALLOWED_EXTENSIONS.join(', ')}`
         );
       }
 
       // Validate MIME type
-      if (!ALLOWED_MIME_TYPES.includes(mimetype.toLowerCase())) {
+      const normalizedMime = mimetype.toLowerCase();
+      if (!ALLOWED_MIME_TYPES.includes(normalizedMime)) {
         throw new Error(
-          `Invalid MIME type. Expected audio format, got: ${mimetype}`
+          `Invalid MIME type. Expected audio/image format, got: ${mimetype}`
         );
       }
 
       // Generate unique filename with UUID v4
       const uuid = randomUUID();
-      const s3Key = `users/${userId || 'anonymous'}/${uuid}.${extension}`;
+      const safeUserId = userId || 'anonymous';
+      const fileKey = `users/${safeUserId}/${uuid}.${normalizedExt}`;
 
-      // Create presigned PUT URL
-      const command = new PutObjectCommand({
+      // Create presigned POST with strict S3 policy conditions
+      const { url, fields } = await createPresignedPost(s3Client, {
         Bucket: process.env.AWS_BUCKET_NAME,
-        Key: s3Key,
-        ContentType: mimetype,
+        Key: fileKey,
+        Conditions: [
+          // Enforce max file size: 15MB (enforced by S3, cannot be bypassed)
+          ['content-length-range', 0, MAX_FILE_SIZE],
+          // Enforce exact Content-Type match
+          ['eq', '$Content-Type', normalizedMime],
+          // Enforce key prefix (user can only upload to their folder)
+          ['starts-with', '$key', `users/${safeUserId}/`],
+        ],
+        Fields: {
+          'Content-Type': normalizedMime,
+        },
+        Expires: PRESIGNED_URL_EXPIRY,
       });
 
-      // URL valid for 60 seconds
-      const uploadUrl = await getSignedUrl(s3Client, command, {
-        expiresIn: 60,
+      logger.info('Presigned POST URL generated', {
+        fileKey,
+        userId: safeUserId,
+        maxSize: MAX_FILE_SIZE,
+        contentType: normalizedMime,
       });
-
-      logger.info('Presigned URL generated', { s3Key, userId });
 
       return {
-        uploadUrl,
-        s3Key,
-        expiresIn: 60,
+        url,
+        fields,
+        fileKey,
+        expiresIn: PRESIGNED_URL_EXPIRY,
+        maxFileSize: MAX_FILE_SIZE,
       };
     } catch (error) {
-      logger.error('Error generating presigned URL', { error: error.message });
+      logger.error('Error generating presigned POST URL', {
+        error: error.message,
+        userId,
+      });
       throw error;
     }
   }
 
   /**
    * Generate presigned URL for audio playback
+   * Uses CloudFront signed URLs. Throws error if not configured.
    * @param {string} beatId - ID of the beat
-   * @returns {Promise<string>} Public URL or Presigned URL
+   * @returns {Promise<string>} CloudFront Signed URL
    */
   static async getAudioPresignedUrl(beatId) {
     try {
@@ -120,17 +148,32 @@ export class BeatService {
         throw new Error('Beat or audio file not found');
       }
 
-      // Return CloudFront URL
-      const cdnDomain = process.env.CDN_DOMAIN || '';
-      // Ensure we handle potential slash inconsistencies
-      const baseUrl = cdnDomain.endsWith('/')
-        ? cdnDomain.slice(0, -1)
-        : cdnDomain;
+      // Normalize the S3 key (remove leading slash if present)
       const key = beat.audio.s3Key.startsWith('/')
         ? beat.audio.s3Key.slice(1)
         : beat.audio.s3Key;
 
-      return `${baseUrl}/${key}`;
+      // Check CloudFront configuration
+      const cloudFrontStatus = checkCloudFrontConfig();
+
+      if (!cloudFrontStatus.isConfigured) {
+        logger.error('CloudFront signing not configured!', {
+          errors: cloudFrontStatus.errors,
+          beatId,
+        });
+        throw new Error(
+          'CloudFront signing is not configured. ' +
+            'Set CLOUDFRONT_KEY_PAIR_ID, CLOUDFRONT_PRIVATE_KEY_BASE64, and CLOUDFRONT_DOMAIN in environment variables.'
+        );
+      }
+
+      // Generate signed URL
+      const signedUrl = generateCloudFrontSignedUrl(key, {
+        expiresIn: 7200, // 2 hours for streaming
+      });
+
+      logger.debug('Generated CloudFront signed URL', { beatId, key });
+      return signedUrl;
     } catch (error) {
       logger.error('Error generating audio URL', {
         error: error.message,

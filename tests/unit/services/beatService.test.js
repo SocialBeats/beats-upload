@@ -7,6 +7,7 @@ import {
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import { parseStream } from 'music-metadata';
 
 vi.mock('../../../src/models/index.js', () => {
@@ -57,6 +58,24 @@ vi.mock('@aws-sdk/s3-request-presigner', () => ({
   getSignedUrl: vi.fn(),
 }));
 
+vi.mock('@aws-sdk/s3-presigned-post', () => ({
+  createPresignedPost: vi.fn(),
+}));
+
+// Mock cloudfrontSigner module
+const mockGenerateSignedUrl = vi.fn(
+  (key, options) => `https://cdn.example.com/${key}?Signature=mock`
+);
+const mockCheckCloudFrontConfig = vi.fn(() => ({
+  isConfigured: true,
+  errors: [],
+}));
+
+vi.mock('../../../src/utils/cloudfrontSigner.js', () => ({
+  generateSignedUrl: mockGenerateSignedUrl,
+  checkCloudFrontConfig: mockCheckCloudFrontConfig,
+}));
+
 describe('BeatService', () => {
   let BeatService;
 
@@ -68,8 +87,16 @@ describe('BeatService', () => {
   });
 
   describe('generatePresignedUploadUrl', () => {
-    it('should generate a presigned URL for valid input', async () => {
-      getSignedUrl.mockResolvedValue('https://presigned-url.com');
+    it('should generate a presigned POST URL for valid input', async () => {
+      createPresignedPost.mockResolvedValue({
+        url: 'https://bucket.s3.amazonaws.com/',
+        fields: {
+          key: 'users/user123/test-uuid.mp3',
+          'Content-Type': 'audio/mpeg',
+          Policy: 'base64policy',
+          'X-Amz-Signature': 'signature',
+        },
+      });
 
       const result = await BeatService.generatePresignedUploadUrl({
         extension: 'mp3',
@@ -78,12 +105,13 @@ describe('BeatService', () => {
         userId: 'user123',
       });
 
-      expect(result).toHaveProperty('uploadUrl', 'https://presigned-url.com');
-      expect(result).toHaveProperty('s3Key');
-      expect(result.s3Key).toContain('users/user123/');
-      expect(result.s3Key).toContain('.mp3');
-      expect(PutObjectCommand).toHaveBeenCalled();
-      expect(getSignedUrl).toHaveBeenCalled();
+      expect(result).toHaveProperty('url', 'https://bucket.s3.amazonaws.com/');
+      expect(result).toHaveProperty('fields');
+      expect(result).toHaveProperty('fileKey');
+      expect(result.fileKey).toContain('users/user123/');
+      expect(result.fileKey).toContain('.mp3');
+      expect(result).toHaveProperty('maxFileSize', 15 * 1024 * 1024);
+      expect(createPresignedPost).toHaveBeenCalled();
     });
 
     it('should throw error for invalid extension', async () => {
@@ -112,7 +140,7 @@ describe('BeatService', () => {
         BeatService.generatePresignedUploadUrl({
           extension: 'mp3',
           mimetype: 'audio/mpeg',
-          size: 51 * 1024 * 1024, // 51MB
+          size: 16 * 1024 * 1024, // 16MB (limit is 15MB)
           userId: 'user123',
         })
       ).rejects.toThrow('File size exceeds maximum allowed');
@@ -120,39 +148,65 @@ describe('BeatService', () => {
   });
 
   describe('getAudioPresignedUrl', () => {
-    const originalEnv = process.env;
-
     beforeEach(() => {
-      process.env = { ...originalEnv, CDN_DOMAIN: 'https://cdn.example.com' };
+      mockGenerateSignedUrl.mockClear();
+      mockCheckCloudFrontConfig.mockClear();
+      mockCheckCloudFrontConfig.mockReturnValue({
+        isConfigured: true,
+        errors: [],
+      });
     });
 
-    afterEach(() => {
-      process.env = originalEnv;
-    });
-
-    it('should return CDN URL for valid beat', async () => {
+    it('should return CloudFront signed URL for valid beat', async () => {
       const mockBeat = { _id: 'beat123', audio: { s3Key: 'audio.mp3' } };
       Beat.findById = vi.fn().mockResolvedValue(mockBeat);
+      mockGenerateSignedUrl.mockReturnValue(
+        'https://cdn.example.com/audio.mp3?Signature=mock'
+      );
 
       const result = await BeatService.getAudioPresignedUrl('beat123');
 
       expect(Beat.findById).toHaveBeenCalledWith('beat123');
-      expect(result).toBe('https://cdn.example.com/audio.mp3');
+      expect(mockCheckCloudFrontConfig).toHaveBeenCalled();
+      expect(mockGenerateSignedUrl).toHaveBeenCalledWith('audio.mp3', {
+        expiresIn: 7200,
+      });
+      expect(result).toBe('https://cdn.example.com/audio.mp3?Signature=mock');
     });
 
     it('should handle leading slash in s3Key', async () => {
       const mockBeat = { _id: 'beat123', audio: { s3Key: '/audio.mp3' } };
       Beat.findById = vi.fn().mockResolvedValue(mockBeat);
+      mockGenerateSignedUrl.mockReturnValue(
+        'https://cdn.example.com/audio.mp3?Signature=mock'
+      );
 
       const result = await BeatService.getAudioPresignedUrl('beat123');
 
-      expect(result).toBe('https://cdn.example.com/audio.mp3');
+      // Should strip leading slash before generating signed URL
+      expect(mockGenerateSignedUrl).toHaveBeenCalledWith('audio.mp3', {
+        expiresIn: 7200,
+      });
+      expect(result).toBe('https://cdn.example.com/audio.mp3?Signature=mock');
     });
 
     it('should throw error if beat not found', async () => {
       Beat.findById = vi.fn().mockResolvedValue(null);
       await expect(BeatService.getAudioPresignedUrl('beat123')).rejects.toThrow(
         'Beat or audio file not found'
+      );
+    });
+
+    it('should throw error if CloudFront is not configured', async () => {
+      const mockBeat = { _id: 'beat123', audio: { s3Key: 'audio.mp3' } };
+      Beat.findById = vi.fn().mockResolvedValue(mockBeat);
+      mockCheckCloudFrontConfig.mockReturnValue({
+        isConfigured: false,
+        errors: ['CLOUDFRONT_KEY_PAIR_ID not configured'],
+      });
+
+      await expect(BeatService.getAudioPresignedUrl('beat123')).rejects.toThrow(
+        'CloudFront signing is not configured'
       );
     });
   });
@@ -738,7 +792,10 @@ describe('BeatService', () => {
 
   describe('Edge Cases', () => {
     it('should handle anonymous user in generatePresignedUploadUrl', async () => {
-      getSignedUrl.mockResolvedValue('https://presigned-url.com');
+      createPresignedPost.mockResolvedValue({
+        url: 'https://bucket.s3.amazonaws.com/',
+        fields: { key: 'users/anonymous/test.mp3' },
+      });
 
       const result = await BeatService.generatePresignedUploadUrl({
         extension: 'mp3',
@@ -746,11 +803,14 @@ describe('BeatService', () => {
         userId: null,
       });
 
-      expect(result.s3Key).toContain('users/anonymous/');
+      expect(result.fileKey).toContain('users/anonymous/');
     });
 
     it('should handle case-insensitive extension validation', async () => {
-      getSignedUrl.mockResolvedValue('https://presigned-url.com');
+      createPresignedPost.mockResolvedValue({
+        url: 'https://bucket.s3.amazonaws.com/',
+        fields: { key: 'users/user123/test.mp3' },
+      });
 
       const result = await BeatService.generatePresignedUploadUrl({
         extension: 'MP3',
@@ -758,11 +818,14 @@ describe('BeatService', () => {
         userId: 'user123',
       });
 
-      expect(result.s3Key).toContain('.MP3');
+      expect(result.fileKey).toContain('.mp3');
     });
 
     it('should handle case-insensitive mimetype validation', async () => {
-      getSignedUrl.mockResolvedValue('https://presigned-url.com');
+      createPresignedPost.mockResolvedValue({
+        url: 'https://bucket.s3.amazonaws.com/',
+        fields: { key: 'users/user123/test.wav' },
+      });
 
       const result = await BeatService.generatePresignedUploadUrl({
         extension: 'wav',
@@ -770,11 +833,14 @@ describe('BeatService', () => {
         userId: 'user123',
       });
 
-      expect(result).toHaveProperty('uploadUrl');
+      expect(result).toHaveProperty('url');
     });
 
     it('should accept alternative audio mimetypes', async () => {
-      getSignedUrl.mockResolvedValue('https://presigned-url.com');
+      createPresignedPost.mockResolvedValue({
+        url: 'https://bucket.s3.amazonaws.com/',
+        fields: { key: 'users/user123/test.wav' },
+      });
 
       // Test audio/x-wav
       await expect(
@@ -783,7 +849,7 @@ describe('BeatService', () => {
           mimetype: 'audio/x-wav',
           userId: 'user123',
         })
-      ).resolves.toHaveProperty('uploadUrl');
+      ).resolves.toHaveProperty('url');
 
       // Test audio/x-m4a
       await expect(
@@ -792,7 +858,7 @@ describe('BeatService', () => {
           mimetype: 'audio/x-m4a',
           userId: 'user123',
         })
-      ).resolves.toHaveProperty('uploadUrl');
+      ).resolves.toHaveProperty('url');
     });
 
     it('should return null from updateBeat when beat not found', async () => {

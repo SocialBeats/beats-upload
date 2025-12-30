@@ -186,11 +186,31 @@ const router = express.Router();
  *   post:
  *     tags:
  *       - Beats
- *     summary: Generate presigned URL for audio upload
+ *     summary: Generate presigned POST URL for audio upload
  *     description: |
- *       Generates a presigned URL for direct upload of audio files to S3.
- *       The URL is valid for 60 seconds. After uploading to S3, use the returned s3Key
- *       to create the beat via POST /api/v1/beats. Requiere autenticación.
+ *       Generates a presigned POST URL for direct upload of audio files to S3.
+ *       The URL is valid for 60 seconds. After uploading to S3, use the returned fileKey
+ *       to create the beat via POST /api/v1/beats.
+ *
+ *       **Security Features:**
+ *       - Max file size: 15MB (enforced by S3 policy)
+ *       - Content-Type validation (enforced by S3 policy)
+ *       - User folder isolation (can only upload to own folder)
+ *       - Rate limiting handled at API Gateway level
+ *
+ *       **Frontend Usage:**
+ *       The response includes `url` and `fields`. To upload:
+ *       ```javascript
+ *       const formData = new FormData();
+ *       // Add all fields from response.data.fields
+ *       Object.entries(fields).forEach(([key, value]) => {
+ *         formData.append(key, value);
+ *       });
+ *       // Add file LAST (required by S3)
+ *       formData.append('file', fileBlob);
+ *       // POST to the url (not PUT!)
+ *       await fetch(url, { method: 'POST', body: formData });
+ *       ```
  *     security:
  *       - gatewayAuth: []
  *         userId: []
@@ -216,10 +236,10 @@ const router = express.Router();
  *               size:
  *                 type: number
  *                 example: 5242880
- *                 description: File size in bytes (max 50MB)
+ *                 description: File size in bytes (max 15MB)
  *     responses:
  *       200:
- *         description: Presigned URL generated successfully
+ *         description: Presigned POST URL generated successfully
  *         content:
  *           application/json:
  *             schema:
@@ -234,24 +254,49 @@ const router = express.Router();
  *                 data:
  *                   type: object
  *                   properties:
- *                     uploadUrl:
+ *                     url:
  *                       type: string
- *                       example: "https://social-beats-storage.s3.eu-north-1.amazonaws.com/users/anonymous/abc-123.mp3?X-Amz-..."
- *                       description: Presigned URL for PUT request to S3
- *                     s3Key:
+ *                       example: "https://social-beats-storage.s3.eu-north-1.amazonaws.com/"
+ *                       description: S3 endpoint URL for POST request
+ *                     fields:
+ *                       type: object
+ *                       description: Form fields to include in multipart/form-data upload
+ *                       properties:
+ *                         bucket:
+ *                           type: string
+ *                         key:
+ *                           type: string
+ *                         Content-Type:
+ *                           type: string
+ *                         Policy:
+ *                           type: string
+ *                         X-Amz-Algorithm:
+ *                           type: string
+ *                         X-Amz-Credential:
+ *                           type: string
+ *                         X-Amz-Date:
+ *                           type: string
+ *                         X-Amz-Signature:
+ *                           type: string
+ *                     fileKey:
  *                       type: string
- *                       example: "users/anonymous/abc-123.mp3"
+ *                       example: "users/user123/abc-123.mp3"
  *                       description: S3 key to use when creating the beat
  *                     expiresIn:
  *                       type: number
  *                       example: 60
  *                       description: URL expiration time in seconds
+ *                     maxFileSize:
+ *                       type: number
+ *                       example: 15728640
+ *                       description: Maximum file size in bytes (15MB)
  *       400:
  *         description: Invalid request (missing fields, invalid file type, size exceeded)
  *       500:
  *         description: Server error generating presigned URL
  */
 // Requiere autenticación para generar URLs de carga
+// Rate limiting se maneja a nivel de API Gateway
 router.post('/upload-url', requireAuth, BeatController.getUploadUrl);
 
 /**
