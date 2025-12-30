@@ -1,4 +1,8 @@
 import mongoose from 'mongoose';
+import {
+  generateSignedUrl,
+  checkCloudFrontConfig,
+} from '../utils/cloudfrontSigner.js';
 
 const beatSchema = new mongoose.Schema(
   {
@@ -159,7 +163,24 @@ const beatSchema = new mongoose.Schema(
             const coverKey = ret.audio.s3CoverKey.startsWith('/')
               ? ret.audio.s3CoverKey.slice(1)
               : ret.audio.s3CoverKey;
-            ret.audio.coverUrl = `${baseUrl}/${coverKey}`;
+
+            const cloudFrontStatus = checkCloudFrontConfig();
+            if (cloudFrontStatus.isConfigured) {
+              try {
+                // Sign the URL so it works with private distribution
+                ret.audio.coverUrl = generateSignedUrl(coverKey);
+              } catch (err) {
+                // Fallback if signing fails for some reason
+                console.error(
+                  'Error signing cover URL inside Beat model:',
+                  err
+                );
+                ret.audio.coverUrl = `${baseUrl}/${coverKey}`;
+              }
+            } else {
+              // Fallback to public URL if not configured (e.g. local dev without keys)
+              ret.audio.coverUrl = `${baseUrl}/${coverKey}`;
+            }
           }
         }
         return ret;

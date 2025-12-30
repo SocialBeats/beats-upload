@@ -73,16 +73,20 @@ export class BeatController {
   }
 
   /**
-   * STREAM AUDIO - Redirect to presigned URL for audio playback
+   * STREAM AUDIO - Get signed CloudFront URL for audio playback
    * GET /api/v1/beats/:id/audio
+   * Returns JSON with streamUrl for the frontend to use
    */
   static async streamAudio(req, res) {
     try {
       const { id } = req.params;
-      const presignedUrl = await BeatService.getAudioPresignedUrl(id);
+      const signedUrl = await BeatService.getAudioPresignedUrl(id);
 
-      // Redirect to the S3 presigned URL
-      res.redirect(presignedUrl);
+      // Return JSON response for frontend consumption
+      res.status(200).json({
+        success: true,
+        streamUrl: signedUrl,
+      });
     } catch (error) {
       logger.error('Error in streamAudio controller', {
         beatId: req.params.id,
