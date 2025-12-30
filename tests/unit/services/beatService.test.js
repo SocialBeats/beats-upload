@@ -62,6 +62,20 @@ vi.mock('@aws-sdk/s3-presigned-post', () => ({
   createPresignedPost: vi.fn(),
 }));
 
+// Mock cloudfrontSigner module
+const mockGenerateSignedUrl = vi.fn(
+  (key, options) => `https://cdn.example.com/${key}?Signature=mock`
+);
+const mockCheckCloudFrontConfig = vi.fn(() => ({
+  isConfigured: true,
+  errors: [],
+}));
+
+vi.mock('../../../src/utils/cloudfrontSigner.js', () => ({
+  generateSignedUrl: mockGenerateSignedUrl,
+  checkCloudFrontConfig: mockCheckCloudFrontConfig,
+}));
+
 describe('BeatService', () => {
   let BeatService;
 
@@ -134,39 +148,65 @@ describe('BeatService', () => {
   });
 
   describe('getAudioPresignedUrl', () => {
-    const originalEnv = process.env;
-
     beforeEach(() => {
-      process.env = { ...originalEnv, CDN_DOMAIN: 'https://cdn.example.com' };
+      mockGenerateSignedUrl.mockClear();
+      mockCheckCloudFrontConfig.mockClear();
+      mockCheckCloudFrontConfig.mockReturnValue({
+        isConfigured: true,
+        errors: [],
+      });
     });
 
-    afterEach(() => {
-      process.env = originalEnv;
-    });
-
-    it('should return CDN URL for valid beat', async () => {
+    it('should return CloudFront signed URL for valid beat', async () => {
       const mockBeat = { _id: 'beat123', audio: { s3Key: 'audio.mp3' } };
       Beat.findById = vi.fn().mockResolvedValue(mockBeat);
+      mockGenerateSignedUrl.mockReturnValue(
+        'https://cdn.example.com/audio.mp3?Signature=mock'
+      );
 
       const result = await BeatService.getAudioPresignedUrl('beat123');
 
       expect(Beat.findById).toHaveBeenCalledWith('beat123');
-      expect(result).toBe('https://cdn.example.com/audio.mp3');
+      expect(mockCheckCloudFrontConfig).toHaveBeenCalled();
+      expect(mockGenerateSignedUrl).toHaveBeenCalledWith('audio.mp3', {
+        expiresIn: 7200,
+      });
+      expect(result).toBe('https://cdn.example.com/audio.mp3?Signature=mock');
     });
 
     it('should handle leading slash in s3Key', async () => {
       const mockBeat = { _id: 'beat123', audio: { s3Key: '/audio.mp3' } };
       Beat.findById = vi.fn().mockResolvedValue(mockBeat);
+      mockGenerateSignedUrl.mockReturnValue(
+        'https://cdn.example.com/audio.mp3?Signature=mock'
+      );
 
       const result = await BeatService.getAudioPresignedUrl('beat123');
 
-      expect(result).toBe('https://cdn.example.com/audio.mp3');
+      // Should strip leading slash before generating signed URL
+      expect(mockGenerateSignedUrl).toHaveBeenCalledWith('audio.mp3', {
+        expiresIn: 7200,
+      });
+      expect(result).toBe('https://cdn.example.com/audio.mp3?Signature=mock');
     });
 
     it('should throw error if beat not found', async () => {
       Beat.findById = vi.fn().mockResolvedValue(null);
       await expect(BeatService.getAudioPresignedUrl('beat123')).rejects.toThrow(
         'Beat or audio file not found'
+      );
+    });
+
+    it('should throw error if CloudFront is not configured', async () => {
+      const mockBeat = { _id: 'beat123', audio: { s3Key: 'audio.mp3' } };
+      Beat.findById = vi.fn().mockResolvedValue(mockBeat);
+      mockCheckCloudFrontConfig.mockReturnValue({
+        isConfigured: false,
+        errors: ['CLOUDFRONT_KEY_PAIR_ID not configured'],
+      });
+
+      await expect(BeatService.getAudioPresignedUrl('beat123')).rejects.toThrow(
+        'CloudFront signing is not configured'
       );
     });
   });
