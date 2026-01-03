@@ -4,8 +4,39 @@ import {
   producer,
   isKafkaEnabled,
 } from '../../../src/services/kafkaConsumer.js';
-import { GetObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+
+// Mock the new s3 config module
+const mockGeneratePresignedGetUrl = vi.fn();
+
+// Mock GetObjectCommand class
+class MockGetObjectCommand {
+  constructor(input) {
+    this.input = input;
+  }
+}
+
+vi.mock('../../../src/config/s3.js', () => ({
+  s3Client: {},
+  BUCKET_NAME: 'test-bucket',
+  executeS3Command: vi.fn(),
+  generatePresignedPostUrl: vi.fn(),
+  generatePresignedGetUrl: mockGeneratePresignedGetUrl,
+  GetObjectCommand: MockGetObjectCommand,
+  ServerOverloadError: class ServerOverloadError extends Error {
+    constructor(message) {
+      super(message);
+      this.name = 'ServerOverloadError';
+      this.statusCode = 503;
+      this.retryAfter = 5;
+    }
+  },
+  getLimiterStats: vi.fn(() => ({
+    running: 0,
+    queued: 0,
+    done: 0,
+    reservoir: null,
+  })),
+}));
 
 // Mocks
 vi.mock('../../../src/models/index.js', () => {
@@ -32,8 +63,6 @@ vi.mock('../../../src/services/kafkaConsumer.js', () => ({
   isKafkaEnabled: vi.fn(),
 }));
 
-vi.mock('@aws-sdk/client-s3');
-vi.mock('@aws-sdk/s3-request-presigner');
 vi.mock('../../../src/logger.js', () => ({
   default: {
     info: vi.fn(),
@@ -111,7 +140,7 @@ describe('BeatService - Download & Stats', () => {
       };
 
       Beat.findById.mockResolvedValue(mockBeat);
-      getSignedUrl.mockResolvedValue(
+      mockGeneratePresignedGetUrl.mockResolvedValue(
         'https://s3.aws.com/presigned-download-url'
       );
 
@@ -119,13 +148,16 @@ describe('BeatService - Download & Stats', () => {
 
       expect(Beat.findById).toHaveBeenCalledWith(beatId);
 
-      // Verify GetObjectCommand was instantiated with ResponseContentDisposition
-      expect(GetObjectCommand).toHaveBeenCalledWith(
+      // Verify generatePresignedGetUrl was called with a GetObjectCommand and options
+      expect(mockGeneratePresignedGetUrl).toHaveBeenCalledWith(
         expect.objectContaining({
-          Bucket: expect.any(String),
-          Key: mockBeat.audio.s3Key,
-          ResponseContentDisposition: `attachment; filename="${mockBeat.audio.filename}"`,
-        })
+          input: expect.objectContaining({
+            Bucket: expect.any(String),
+            Key: mockBeat.audio.s3Key,
+            ResponseContentDisposition: `attachment; filename="${mockBeat.audio.filename}"`,
+          }),
+        }),
+        expect.objectContaining({ expiresIn: 300 })
       );
 
       expect(url).toBe('https://s3.aws.com/presigned-download-url');
@@ -136,6 +168,27 @@ describe('BeatService - Download & Stats', () => {
       await expect(
         BeatService.getDownloadPresignedUrl('fakeId')
       ).rejects.toThrow('Beat or audio file not found');
+    });
+
+    it('should throw ServerOverloadError when server is overloaded', async () => {
+      const { ServerOverloadError } = await import('../../../src/config/s3.js');
+      const beatId = 'beat123';
+      const mockBeat = {
+        _id: beatId,
+        audio: {
+          s3Key: 'beats/test.mp3',
+          filename: 'MyCoolBeat.mp3',
+        },
+      };
+
+      Beat.findById.mockResolvedValue(mockBeat);
+      mockGeneratePresignedGetUrl.mockRejectedValue(
+        new ServerOverloadError('Server too busy')
+      );
+
+      await expect(BeatService.getDownloadPresignedUrl(beatId)).rejects.toThrow(
+        'Server too busy'
+      );
     });
   });
 });
