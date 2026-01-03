@@ -1,28 +1,22 @@
 import { Beat } from '../models/index.js';
 import logger from '../../logger.js';
 import { producer, isKafkaEnabled } from './kafkaConsumer.js';
-import {
-  S3Client,
-  DeleteObjectCommand,
-  PutObjectCommand,
-  GetObjectCommand,
-} from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import { parseStream } from 'music-metadata';
 import { randomUUID } from 'crypto';
 import {
   generateSignedUrl as generateCloudFrontSignedUrl,
   checkCloudFrontConfig,
 } from '../utils/cloudfrontSigner.js';
-
-const s3Client = new S3Client({
-  region: process.env.AWS_REGION,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  },
-});
+import {
+  s3Client,
+  BUCKET_NAME,
+  executeS3Command,
+  generatePresignedPostUrl,
+  generatePresignedGetUrl,
+  ServerOverloadError,
+  DeleteObjectCommand,
+  GetObjectCommand,
+} from '../config/s3.js';
 
 const ALLOWED_EXTENSIONS = [
   'mp3',
@@ -53,11 +47,16 @@ export class BeatService {
    * Generate presigned POST URL for direct S3 upload with strict policies.
    * Uses S3 POST policy conditions to enforce file size limits server-side.
    *
+   * Stability Controls:
+   * - toobusy-js: Rejects request immediately if server is overloaded
+   * - bottleneck: Queues S3 operations to limit concurrency
+   *
    * @param {Object} params - Upload parameters
    * @param {string} params.extension - File extension (mp3, wav, etc.)
    * @param {string} params.mimetype - MIME type of the file
    * @param {string} params.userId - User ID for folder structure
    * @returns {Promise<Object>} Presigned POST data: { url, fields, fileKey }
+   * @throws {ServerOverloadError} If server is overloaded (503)
    */
   static async generatePresignedUploadUrl({
     extension,
@@ -95,8 +94,9 @@ export class BeatService {
       const fileKey = `users/${safeUserId}/${uuid}.${normalizedExt}`;
 
       // Create presigned POST with strict S3 policy conditions
-      const { url, fields } = await createPresignedPost(s3Client, {
-        Bucket: process.env.AWS_BUCKET_NAME,
+      // Uses stability-controlled S3 operation (toobusy + bottleneck)
+      const { url, fields } = await generatePresignedPostUrl({
+        Bucket: BUCKET_NAME,
         Key: fileKey,
         Conditions: [
           // Enforce max file size: 15MB (enforced by S3, cannot be bypassed)
@@ -139,7 +139,7 @@ export class BeatService {
    * Generate presigned URL for audio playback
    * Uses CloudFront signed URLs. Throws error if not configured.
    * @param {string} beatId - ID of the beat
-   * @returns {Promise<string>} CloudFront Signed URL
+   * @returns {Promise<Object>} Object with streamUrl and coverUrl (both signed)
    */
   static async getAudioPresignedUrl(beatId) {
     try {
@@ -149,7 +149,7 @@ export class BeatService {
       }
 
       // Normalize the S3 key (remove leading slash if present)
-      const key = beat.audio.s3Key.startsWith('/')
+      const audioKey = beat.audio.s3Key.startsWith('/')
         ? beat.audio.s3Key.slice(1)
         : beat.audio.s3Key;
 
@@ -167,13 +167,30 @@ export class BeatService {
         );
       }
 
-      // Generate signed URL
-      const signedUrl = generateCloudFrontSignedUrl(key, {
+      // Generate signed URL for audio
+      const streamUrl = generateCloudFrontSignedUrl(audioKey, {
         expiresIn: 7200, // 2 hours for streaming
       });
 
-      logger.debug('Generated CloudFront signed URL', { beatId, key });
-      return signedUrl;
+      // Generate signed URL for cover (if exists)
+      let coverUrl = null;
+      if (beat.audio?.s3CoverKey) {
+        const coverKey = beat.audio.s3CoverKey.startsWith('/')
+          ? beat.audio.s3CoverKey.slice(1)
+          : beat.audio.s3CoverKey;
+
+        coverUrl = generateCloudFrontSignedUrl(coverKey, {
+          expiresIn: 7200, // 2 hours
+        });
+      }
+
+      logger.debug('Generated CloudFront signed URLs', {
+        beatId,
+        audioKey,
+        hasCover: !!coverUrl,
+      });
+
+      return { streamUrl, coverUrl };
     } catch (error) {
       logger.error('Error generating audio URL', {
         error: error.message,
@@ -184,9 +201,91 @@ export class BeatService {
   }
 
   /**
+   * Generate signed URLs for multiple beats at once (batch)
+   * @param {string[]} beatIds - Array of beat IDs
+   * @returns {Promise<Object>} Object with urls map, resolved count, and error count
+   */
+  static async getBatchSignedUrls(beatIds) {
+    const urls = {};
+    let resolved = 0;
+    let errors = 0;
+
+    // Check CloudFront configuration once
+    const cloudFrontStatus = checkCloudFrontConfig();
+    if (!cloudFrontStatus.isConfigured) {
+      logger.error('CloudFront signing not configured for batch!', {
+        errors: cloudFrontStatus.errors,
+      });
+      throw new Error('CloudFront signing is not configured');
+    }
+
+    // Fetch all beats in one query for efficiency
+    const beats = await Beat.find({ _id: { $in: beatIds } }).lean();
+    const beatsMap = new Map(beats.map((b) => [b._id.toString(), b]));
+
+    for (const beatId of beatIds) {
+      try {
+        const beat = beatsMap.get(beatId);
+
+        if (!beat || !beat.audio?.s3Key) {
+          urls[beatId] = null;
+          errors++;
+          continue;
+        }
+
+        // Normalize audio key
+        const audioKey = beat.audio.s3Key.startsWith('/')
+          ? beat.audio.s3Key.slice(1)
+          : beat.audio.s3Key;
+
+        // Generate signed URL for audio
+        const streamUrl = generateCloudFrontSignedUrl(audioKey, {
+          expiresIn: 7200,
+        });
+
+        // Generate signed URL for cover (if exists)
+        let coverUrl = null;
+        if (beat.audio?.s3CoverKey) {
+          const coverKey = beat.audio.s3CoverKey.startsWith('/')
+            ? beat.audio.s3CoverKey.slice(1)
+            : beat.audio.s3CoverKey;
+
+          coverUrl = generateCloudFrontSignedUrl(coverKey, {
+            expiresIn: 7200,
+          });
+        }
+
+        urls[beatId] = { streamUrl, coverUrl };
+        resolved++;
+      } catch (error) {
+        logger.warn('Error generating signed URL for beat in batch', {
+          beatId,
+          error: error.message,
+        });
+        urls[beatId] = null;
+        errors++;
+      }
+    }
+
+    logger.debug('Batch signed URLs generated', {
+      requested: beatIds.length,
+      resolved,
+      errors,
+    });
+
+    return { urls, resolved, errors };
+  }
+
+  /**
    * Generate presigned URL for audio download (forces save as)
+   *
+   * Stability Controls:
+   * - toobusy-js: Rejects request immediately if server is overloaded
+   * - bottleneck: Queues S3 operations to limit concurrency
+   *
    * @param {string} beatId - ID of the beat
    * @returns {Promise<string>} S3 Presigned URL with Content-Disposition
+   * @throws {ServerOverloadError} If server is overloaded (503)
    */
   static async getDownloadPresignedUrl(beatId) {
     try {
@@ -196,13 +295,13 @@ export class BeatService {
       }
 
       const command = new GetObjectCommand({
-        Bucket: process.env.AWS_BUCKET_NAME,
+        Bucket: BUCKET_NAME,
         Key: beat.audio.s3Key,
         ResponseContentDisposition: `attachment; filename="${beat.audio.filename || 'beat.mp3'}"`,
       });
 
-      // Valid for 5 minutes
-      const url = await getSignedUrl(s3Client, command, { expiresIn: 300 });
+      // Valid for 5 minutes - uses stability-controlled S3 operation
+      const url = await generatePresignedGetUrl(command, { expiresIn: 300 });
       return url;
     } catch (error) {
       logger.error('Error generating download URL', {
@@ -215,19 +314,25 @@ export class BeatService {
 
   /**
    * Crear un nuevo beat
+   *
+   * Stability Controls:
+   * - toobusy-js: Rejects request immediately if server is overloaded
+   * - bottleneck: Queues S3 operations to limit concurrency
+   *
    * @param {Object} beatData - Datos del beat a crear
    * @returns {Promise<Object>} Beat creado
+   * @throws {ServerOverloadError} If server is overloaded (503)
    */
   static async createBeat(beatData) {
     try {
-      // Validate audio file content
+      // Validate audio file content using stability-controlled S3 operation
       if (beatData.audio?.s3Key) {
         try {
           const command = new GetObjectCommand({
-            Bucket: process.env.AWS_BUCKET_NAME,
+            Bucket: BUCKET_NAME,
             Key: beatData.audio.s3Key,
           });
-          const { Body } = await s3Client.send(command);
+          const { Body } = await executeS3Command(command);
 
           const metadata = await parseStream(Body);
 
@@ -239,6 +344,10 @@ export class BeatService {
           // Optional: Verify it matches the declared mimetype if needed
           // const detectedMime = metadata.format.container;
         } catch (validationError) {
+          // Re-throw ServerOverloadError without wrapping
+          if (validationError instanceof ServerOverloadError) {
+            throw validationError;
+          }
           logger.error('Audio validation failed', {
             error: validationError.message,
             s3Key: beatData.audio.s3Key,
@@ -248,13 +357,10 @@ export class BeatService {
           );
         }
       }
-      // Ensure metrics field exists and start as 'pending' so other services/frontend
-      // can detect that metrics are being computed.
-      beatData.metrics = beatData.metrics || {};
-      // Do not overwrite an explicit value set upstream, but ensure default pending
-      if (!beatData.metrics.status) {
-        beatData.metrics.status = 'pending';
-      }
+
+      // NOTA: Ya no inicializamos metrics.status aquí
+      // Las métricas son responsabilidad del microservicio analytics-and-dashboards
+      // y se calculan automáticamente vía Kafka cuando se publica el evento BEAT_ANALYTICS
 
       const beat = new Beat(beatData);
       const savedBeat = await beat.save();
@@ -279,6 +385,14 @@ export class BeatService {
         try {
           // Use toJSON() to ensure virtuals like audio.url are included
           const beatPayload = savedBeat.toJSON();
+
+          // Generate signed CDN URL for analytics consumers to fetch audio binary
+          const s3Key = savedBeat.audio?.s3Key;
+          const normalizedKey = s3Key?.startsWith('/') ? s3Key.slice(1) : s3Key;
+          const audioUrl = normalizedKey
+            ? generateCloudFrontSignedUrl(normalizedKey, { expiresIn: 7200 })
+            : null;
+
           await producer.send({
             topic: 'beats-events',
             messages: [
@@ -288,14 +402,26 @@ export class BeatService {
                   payload: beatPayload,
                 }),
               },
+              {
+                value: JSON.stringify({
+                  type: 'BEAT_ANALYTICS',
+                  payload: {
+                    beatId: savedBeat._id.toString(),
+                    userId: savedBeat.userId,
+                    audioUrl,
+                    title: savedBeat.title,
+                    createdAt: savedBeat.createdAt,
+                  },
+                }),
+              },
             ],
           });
-          logger.info('Published BEAT_CREATED to Kafka', {
+          logger.info('Published BEAT_CREATED and BEAT_ANALYTICS to Kafka', {
             beatId: savedBeat._id,
             topic: 'beats-events',
           });
         } catch (kafkaError) {
-          logger.error('Failed to publish BEAT_CREATED event', {
+          logger.error('Failed to publish beat events', {
             error: kafkaError.message,
           });
         }
@@ -306,12 +432,18 @@ export class BeatService {
     } catch (error) {
       logger.error('Error creating beat', { error: error.message });
 
+      // Re-throw ServerOverloadError without compensation (upload didn't happen)
+      if (error instanceof ServerOverloadError) {
+        throw error;
+      }
+
       // Compensation: Delete uploaded files if DB save fails
+      // Note: Compensation uses direct S3 client to avoid bottleneck during cleanup
       if (beatData.audio?.s3Key) {
         try {
           await s3Client.send(
             new DeleteObjectCommand({
-              Bucket: process.env.AWS_BUCKET_NAME,
+              Bucket: BUCKET_NAME,
               Key: beatData.audio.s3Key,
             })
           );
@@ -330,7 +462,7 @@ export class BeatService {
         try {
           await s3Client.send(
             new DeleteObjectCommand({
-              Bucket: process.env.AWS_BUCKET_NAME,
+              Bucket: BUCKET_NAME,
               Key: beatData.audio.s3CoverKey,
             })
           );
@@ -526,11 +658,12 @@ export class BeatService {
         });
       } catch (dbError) {
         // Compensation: If DB update fails, delete the NEW file if one was uploaded
+        // Note: Compensation uses direct S3 client to avoid bottleneck during cleanup
         if (newS3Key && newS3Key !== oldBeat.audio?.s3Key) {
           try {
             await s3Client.send(
               new DeleteObjectCommand({
-                Bucket: process.env.AWS_BUCKET_NAME,
+                Bucket: BUCKET_NAME,
                 Key: newS3Key,
               })
             );
@@ -548,6 +681,7 @@ export class BeatService {
       }
 
       // 3. Si la actualización de BD fue exitosa Y cambió el archivo, borrar el viejo de S3
+      // Note: Cleanup uses direct S3 client to avoid bottleneck
       if (
         updatedBeat &&
         oldBeat.audio?.s3Key &&
@@ -557,7 +691,7 @@ export class BeatService {
         try {
           await s3Client.send(
             new DeleteObjectCommand({
-              Bucket: process.env.AWS_BUCKET_NAME,
+              Bucket: BUCKET_NAME,
               Key: oldBeat.audio.s3Key,
             })
           );
@@ -632,12 +766,13 @@ export class BeatService {
       }
 
       // 3. Si se borró de BD, intentar borrar archivos de S3
+      // Note: Cleanup uses direct S3 client to avoid bottleneck
       // Audio
       if (beat.audio?.s3Key) {
         try {
           await s3Client.send(
             new DeleteObjectCommand({
-              Bucket: process.env.AWS_BUCKET_NAME,
+              Bucket: BUCKET_NAME,
               Key: beat.audio.s3Key,
             })
           );
@@ -655,7 +790,7 @@ export class BeatService {
         try {
           await s3Client.send(
             new DeleteObjectCommand({
-              Bucket: process.env.AWS_BUCKET_NAME,
+              Bucket: BUCKET_NAME,
               Key: beat.audio.s3CoverKey,
             })
           );
@@ -947,3 +1082,5 @@ export class BeatService {
     };
   }
 }
+// Re-export ServerOverloadError for controller error handling
+export { ServerOverloadError };
