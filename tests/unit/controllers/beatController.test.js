@@ -6,6 +6,16 @@ vi.mock('../../../src/models/index.js', () => ({
   Beat: {},
 }));
 
+// Create ServerOverloadError class for mock
+class ServerOverloadError extends Error {
+  constructor(message = 'Server is too busy, please try again later') {
+    super(message);
+    this.name = 'ServerOverloadError';
+    this.statusCode = 503;
+    this.retryAfter = 5;
+  }
+}
+
 vi.mock('../../../src/services/beatService.js', () => ({
   BeatService: {
     generatePresignedUploadUrl: vi.fn(),
@@ -19,6 +29,7 @@ vi.mock('../../../src/services/beatService.js', () => ({
     getBeatsStats: vi.fn(),
     getUserBeats: vi.fn(),
   },
+  ServerOverloadError,
 }));
 
 describe('BeatController', () => {

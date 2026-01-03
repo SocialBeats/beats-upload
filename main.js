@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import toobusy from 'toobusy-js';
 import logger from './logger.js';
 import { connectDB, disconnectDB } from './src/db.js';
 import {
@@ -24,10 +25,27 @@ dotenv.config({ path: path.resolve(__dirname, '.env'), quiet: true });
 
 const PORT = process.env.PORT || 3000;
 
+// Configure toobusy with maxLag of 100ms (consistent with user-auth service)
+toobusy.maxLag(parseInt(process.env.TOOBUSY_MAX_LAG || '100', 10));
+
 const app = express();
 
 app.use(express.json());
 app.use(cors());
+
+// Middleware for server overload detection (global level)
+app.use((req, res, next) => {
+  if (toobusy()) {
+    logger.warn(`Server too busy - rejecting request to ${req.path}`);
+    res.set('x-retry-after', '5');
+    return res.status(503).json({
+      success: false,
+      error: 'Service Unavailable',
+      message: 'Server is too busy, please try again later',
+    });
+  }
+  next();
+});
 
 // add your middlewares here like this:
 app.use(verifyToken);
@@ -63,6 +81,10 @@ if (process.env.NODE_ENV !== 'test') {
 
 async function gracefulShutdown(signal) {
   logger.warn(`${signal} received. Starting secure shutdown...`);
+
+  // Stop toobusy interval to prevent memory leaks
+  toobusy.shutdown();
+  logger.info('Toobusy shutdown completed');
 
   try {
     logger.warn('Disconnecting Kafka consumer...');

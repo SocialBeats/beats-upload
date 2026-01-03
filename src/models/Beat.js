@@ -101,20 +101,8 @@ const beatSchema = new mongoose.Schema(
       },
     },
 
-    // Estado y datos de métricas calculadas por el worker/analytics
-    metrics: {
-      status: {
-        type: String,
-        enum: ['pending', 'processing', 'done'],
-        default: 'pending',
-      },
-      computedAt: {
-        type: Date,
-      },
-      data: {
-        type: mongoose.Schema.Types.Mixed,
-      },
-    },
+    // NOTA: El estado de métricas ahora pertenece al microservicio analytics-and-dashboards
+    // Para consultar el estado de métricas, usar el endpoint /api/v1/analytics/beat-metrics?beatId={id}
 
     isPublic: {
       type: Boolean,
