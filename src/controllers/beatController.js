@@ -1,5 +1,26 @@
-import { BeatService } from '../services/beatService.js';
+import { BeatService, ServerOverloadError } from '../services/beatService.js';
 import logger from '../../logger.js';
+
+/**
+ * Helper function to handle ServerOverloadError consistently
+ * Returns 503 Service Unavailable with retry-after header
+ *
+ * @param {Error} error - The error to check
+ * @param {Response} res - Express response object
+ * @returns {boolean} True if error was handled, false otherwise
+ */
+function handleOverloadError(error, res) {
+  if (error instanceof ServerOverloadError) {
+    res.set('x-retry-after', String(error.retryAfter || 5));
+    res.status(503).json({
+      success: false,
+      error: 'Service Unavailable',
+      message: error.message,
+    });
+    return true;
+  }
+  return false;
+}
 
 /**
  * Controller para manejar las operaciones CRUD de beats
@@ -52,6 +73,9 @@ export class BeatController {
         error: error.message,
       });
 
+      // Handle server overload (503)
+      if (handleOverloadError(error, res)) return;
+
       // Handle validation errors from service
       if (
         error.message.includes('Invalid') ||
@@ -73,19 +97,21 @@ export class BeatController {
   }
 
   /**
-   * STREAM AUDIO - Get signed CloudFront URL for audio playback
+   * STREAM AUDIO - Get signed CloudFront URLs for audio playback and cover
    * GET /api/v1/beats/:id/audio
-   * Returns JSON with streamUrl for the frontend to use
+   * Returns JSON with streamUrl and coverUrl for the frontend to use
    */
   static async streamAudio(req, res) {
     try {
       const { id } = req.params;
-      const signedUrl = await BeatService.getAudioPresignedUrl(id);
+      const { streamUrl, coverUrl } =
+        await BeatService.getAudioPresignedUrl(id);
 
       // Return JSON response for frontend consumption
       res.status(200).json({
         success: true,
-        streamUrl: signedUrl,
+        streamUrl,
+        coverUrl, // May be null if beat has no cover
       });
     } catch (error) {
       logger.error('Error in streamAudio controller', {
@@ -100,9 +126,68 @@ export class BeatController {
         });
       }
 
+      // Handle server overload (503)
+      if (handleOverloadError(error, res)) return;
+
       res.status(500).json({
         success: false,
         message: 'Error streaming audio',
+        error:
+          process.env.NODE_ENV === 'development' ? error.message : undefined,
+      });
+    }
+  }
+
+  /**
+   * BATCH SIGNED URLS - Get signed URLs for multiple beats at once
+   * POST /api/v1/beats/batch/signed-urls
+   * Body: { beatIds: string[] }
+   * Max 10 beats per request
+   */
+  static async getBatchSignedUrls(req, res) {
+    try {
+      const { beatIds } = req.body;
+
+      // Validate input
+      if (!Array.isArray(beatIds) || beatIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'beatIds must be a non-empty array',
+        });
+      }
+
+      // Limit to 10 beats per request
+      const MAX_BATCH_SIZE = 10;
+      if (beatIds.length > MAX_BATCH_SIZE) {
+        return res.status(400).json({
+          success: false,
+          message: `Maximum ${MAX_BATCH_SIZE} beats per batch request`,
+        });
+      }
+
+      const result = await BeatService.getBatchSignedUrls(beatIds);
+
+      res.status(200).json({
+        success: true,
+        data: result.urls,
+        meta: {
+          requested: beatIds.length,
+          resolved: result.resolved,
+          errors: result.errors,
+        },
+        expiresIn: 7200, // 2 hours
+      });
+    } catch (error) {
+      logger.error('Error in getBatchSignedUrls controller', {
+        error: error.message,
+      });
+
+      // Handle server overload (503)
+      if (handleOverloadError(error, res)) return;
+
+      res.status(500).json({
+        success: false,
+        message: 'Error generating batch signed URLs',
         error:
           process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
@@ -146,7 +231,7 @@ export class BeatController {
         currentDownloads = updatedBeat.stats.downloads;
       }
 
-      // 4. Generate Download URL
+      // 4. Generate Download URL (may throw ServerOverloadError)
       const downloadUrl = await BeatService.getDownloadPresignedUrl(id);
 
       logger.info('Beat download initiated', { beatId: id, userId, isOwner });
@@ -167,6 +252,10 @@ export class BeatController {
         beatId: req.params.id,
         error: error.message,
       });
+
+      // Handle server overload (503)
+      if (handleOverloadError(error, res)) return;
+
       res.status(500).json({
         success: false,
         message: 'Error processing download',
@@ -207,6 +296,9 @@ export class BeatController {
       });
     } catch (error) {
       logger.error('Error in createBeat controller', { error: error.message });
+
+      // Handle server overload (503)
+      if (handleOverloadError(error, res)) return;
 
       // Manejar errores de validación de Mongoose
       if (error.name === 'ValidationError') {

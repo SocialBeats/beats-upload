@@ -301,6 +301,80 @@ router.post('/upload-url', requireAuth, BeatController.getUploadUrl);
 
 /**
  * @swagger
+ * /api/v1/beats/batch/signed-urls:
+ *   post:
+ *     tags:
+ *       - Beats
+ *     summary: Get signed URLs for multiple beats (batch)
+ *     description: |
+ *       Generates signed CloudFront URLs for audio streaming and covers for multiple beats at once.
+ *       Maximum 10 beats per request to prevent abuse.
+ *       Use this endpoint to optimize loading playlists or beat lists.
+ *     security:
+ *       - gatewayAuth: []
+ *         userId: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - beatIds
+ *             properties:
+ *               beatIds:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 maxItems: 10
+ *                 example: ["507f1f77bcf86cd799439011", "507f1f77bcf86cd799439012"]
+ *                 description: Array of beat IDs (max 10)
+ *     responses:
+ *       200:
+ *         description: Signed URLs generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   additionalProperties:
+ *                     type: object
+ *                     properties:
+ *                       streamUrl:
+ *                         type: string
+ *                       coverUrl:
+ *                         type: string
+ *                         nullable: true
+ *                 meta:
+ *                   type: object
+ *                   properties:
+ *                     requested:
+ *                       type: number
+ *                     resolved:
+ *                       type: number
+ *                     errors:
+ *                       type: number
+ *                 expiresIn:
+ *                   type: number
+ *                   example: 7200
+ *       400:
+ *         description: Invalid request (empty array, exceeded max)
+ *       500:
+ *         description: Server error
+ */
+router.post(
+  '/batch/signed-urls',
+  requireAuth,
+  BeatController.getBatchSignedUrls
+);
+
+/**
+ * @swagger
  * /api/v1/beats:
  *   post:
  *     tags:
