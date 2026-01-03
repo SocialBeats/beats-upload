@@ -1,3 +1,25 @@
+# Release v2.1.0
+
+## Features
+- feat: testing suit updated for bottleneck and toobusy libraries
+- feat: bottleneck and too-busy integration
+- feat: kafka integration with analytics
+
+## Tests
+No test changes.
+## Documentation
+No documentation changes.
+## Fixes
+No fixes added.
+## Continuous integration (CI)
+No CI changes.
+## Other changes
+- Merge pull request #22 from SocialBeats/develop
+
+## Full commit history
+
+For full commit history, see [here](https://github.com/SocialBeats/beats-upload/compare/v2.0.0...v2.1.0).
+
 # Release v2.0.0
 
 ## Features
