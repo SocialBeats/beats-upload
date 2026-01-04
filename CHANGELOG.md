@@ -1,3 +1,23 @@
+# Release v2.1.1
+
+## Features
+No new features.
+## Tests
+No test changes.
+## Documentation
+No documentation changes.
+## Fixes
+- fix: normalize resourceKey to avoid double slash in CloudFront URLs
+
+## Continuous integration (CI)
+No CI changes.
+## Other changes
+- Merge pull request #23 from SocialBeats/develop
+
+## Full commit history
+
+For full commit history, see [here](https://github.com/SocialBeats/beats-upload/compare/v2.1.0...v2.1.1).
+
 # Release v2.1.0
 
 ## Features
