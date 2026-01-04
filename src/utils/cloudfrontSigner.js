@@ -114,8 +114,11 @@ export function generateSignedUrl(resourceKey, options = {}) {
   const privateKey = decodePrivateKey();
   const { expiresIn = config.defaultExpiration, dateLessThan } = options;
 
+  // Normalize resourceKey: remove leading slashes to avoid double slashes in URL
+  const normalizedKey = resourceKey.replace(/^\/+/, '');
+
   // Construir la URL del recurso
-  const url = `${config.cloudfrontDomain}/${resourceKey}`;
+  const url = `${config.cloudfrontDomain}/${normalizedKey}`;
 
   // Calcular fecha de expiración
   const expiration = dateLessThan || new Date(Date.now() + expiresIn * 1000);
