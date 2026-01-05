@@ -1,3 +1,26 @@
+# Release v3.0.0
+
+## Features
+- feat: space implementation on beats upload features
+
+## Tests
+No test changes.
+## Documentation
+No documentation changes.
+## Fixes
+- fix: second try
+- fix: trying to solve action test
+
+## Continuous integration (CI)
+No CI changes.
+## Other changes
+- Merge pull request #25 from SocialBeats/develop
+- Merge pull request #24 from SocialBeats/feat/space
+
+## Full commit history
+
+For full commit history, see [here](https://github.com/SocialBeats/beats-upload/compare/v2.1.1...v3.0.0).
+
 # Release v2.1.1
 
 ## Features
