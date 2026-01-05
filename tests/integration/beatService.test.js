@@ -27,6 +27,9 @@ const mocks = vi.hoisted(() => {
       done: 0,
       reservoir: null,
     })),
+    // Space client mocks
+    spaceClientEvaluate: vi.fn(),
+    axiosPut: vi.fn(),
   };
 });
 
@@ -85,6 +88,24 @@ vi.mock('../../src/services/kafkaConsumer.js', () => ({
   isKafkaEnabled: vi.fn(),
 }));
 
+// Mock spaceClient
+vi.mock('../../src/utils/spaceConnection.js', () => ({
+  spaceClient: {
+    features: {
+      evaluate: mocks.spaceClientEvaluate,
+    },
+  },
+}));
+
+// Mock axios
+vi.mock('axios', () => ({
+  default: {
+    put: mocks.axiosPut,
+    get: vi.fn(),
+    post: vi.fn(),
+  },
+}));
+
 describe('BeatService Integration Tests (with S3)', () => {
   let mongoServer;
   let BeatService; // Dynamic import
@@ -129,6 +150,11 @@ describe('BeatService Integration Tests (with S3)', () => {
 
     // Setup default S3 mock response for executeS3Command (audio validation)
     mocks.executeS3Command.mockResolvedValue({ Body: 'mock-stream' });
+
+    // Default spaceClient mock - allow all features
+    mocks.spaceClientEvaluate.mockResolvedValue({ eval: true });
+    // Default axios mock
+    mocks.axiosPut.mockResolvedValue({ data: {} });
   });
 
   describe('createBeat', () => {

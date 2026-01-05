@@ -7,6 +7,7 @@ import {
 
 // Mock the new s3 config module
 const mockGeneratePresignedGetUrl = vi.fn();
+const mockSpaceClientEvaluate = vi.fn();
 
 // Mock GetObjectCommand class
 class MockGetObjectCommand {
@@ -36,6 +37,24 @@ vi.mock('../../../src/config/s3.js', () => ({
     done: 0,
     reservoir: null,
   })),
+}));
+
+// Mock spaceClient
+vi.mock('../../../src/utils/spaceConnection.js', () => ({
+  spaceClient: {
+    features: {
+      evaluate: mockSpaceClientEvaluate,
+    },
+  },
+}));
+
+// Mock axios
+vi.mock('axios', () => ({
+  default: {
+    put: vi.fn().mockResolvedValue({ data: {} }),
+    get: vi.fn(),
+    post: vi.fn(),
+  },
 }));
 
 // Mocks
@@ -80,6 +99,10 @@ describe('BeatService - Download & Stats', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.resetModules();
+
+    // Default spaceClient mock - allow all features
+    mockSpaceClientEvaluate.mockResolvedValue({ eval: true });
+
     const module = await import('../../../src/services/beatService.js');
     BeatService = module.BeatService;
   });

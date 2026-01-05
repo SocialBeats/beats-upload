@@ -1035,6 +1035,52 @@ paths:
           description: Este beat no permite descargas
         '404':
           description: Beat no encontrado
+  /api/v1/beats/{id}/promote:
+    patch:
+      tags:
+        - Beats
+      summary: Toggle beat promotion
+      description: >-
+        Toggles the promoted status of a beat. When promoting, validates that
+        the user has the promotedBeat add-on feature. Promoted beats appear
+        first in explore/search results.
+      security:
+        - gatewayAuth: []
+          userId: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: ID del beat
+      responses:
+        '200':
+          description: Promotion status toggled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Beat promoted successfully
+                  data:
+                    type: object
+                    properties:
+                      beatId:
+                        type: string
+                      promoted:
+                        type: boolean
+        '401':
+          description: No autenticado
+        '403':
+          description: No tiene permisos o la feature no está disponible
+        '404':
+          description: Beat no encontrado
   /api/v1/health:
     get:
       tags:
