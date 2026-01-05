@@ -227,7 +227,7 @@ export class BeatController {
       let currentDownloads = beat.stats.downloads;
 
       if (!isOwner) {
-        const updatedBeat = await BeatService.incrementDownloads(id);
+        const updatedBeat = await BeatService.incrementDownloads(id, userId);
         currentDownloads = updatedBeat.stats.downloads;
       }
 
@@ -710,6 +710,75 @@ export class BeatController {
       res.status(500).json({
         success: false,
         message: 'Error retrieving statistics',
+        error:
+          process.env.NODE_ENV === 'development' ? error.message : undefined,
+      });
+    }
+  }
+
+  /**
+   * TOGGLE PROMOTION - Toggle beat promotion status
+   * PATCH /api/v1/beats/:id/promote
+   *
+   * Toggles the promoted status of a beat.
+   * When promoting, validates that user has the promotedBeat feature.
+   */
+  static async togglePromotion(req, res) {
+    try {
+      const { id } = req.params;
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          message: 'Authentication required',
+        });
+      }
+
+      const beat = await BeatService.togglePromotion(id, userId);
+
+      res.status(200).json({
+        success: true,
+        message: beat.promoted
+          ? 'Beat promoted successfully'
+          : 'Beat promotion removed',
+        data: {
+          beatId: beat._id,
+          promoted: beat.promoted,
+        },
+      });
+    } catch (error) {
+      logger.error('Error in togglePromotion controller', {
+        beatId: req.params.id,
+        userId: req.user?.id,
+        error: error.message,
+      });
+
+      // Handle specific errors
+      if (error.message === 'Beat not found') {
+        return res.status(404).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      if (error.message === 'Not authorized to modify this beat') {
+        return res.status(403).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      if (error.message.includes('feature not available')) {
+        return res.status(403).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      res.status(500).json({
+        success: false,
+        message: 'Error toggling beat promotion',
         error:
           process.env.NODE_ENV === 'development' ? error.message : undefined,
       });

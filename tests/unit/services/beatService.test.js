@@ -39,6 +39,9 @@ const mocks = vi.hoisted(() => {
     GetObjectCommand: MockGetObjectCommand,
     DeleteObjectCommand: MockDeleteObjectCommand,
     PutObjectCommand: MockPutObjectCommand,
+    // Space client mocks
+    spaceClientEvaluate: vi.fn(),
+    axiosPut: vi.fn(),
   };
 });
 
@@ -138,6 +141,24 @@ vi.mock('../../../src/utils/cloudfrontSigner.js', () => ({
   checkCloudFrontConfig: mockCheckCloudFrontConfig,
 }));
 
+// Mock spaceClient
+vi.mock('../../../src/utils/spaceConnection.js', () => ({
+  spaceClient: {
+    features: {
+      evaluate: mocks.spaceClientEvaluate,
+    },
+  },
+}));
+
+// Mock axios
+vi.mock('axios', () => ({
+  default: {
+    put: mocks.axiosPut,
+    get: vi.fn(),
+    post: vi.fn(),
+  },
+}));
+
 describe('BeatService', () => {
   let BeatService;
   let ServerOverloadError;
@@ -157,6 +178,11 @@ describe('BeatService', () => {
     mocks.generatePresignedGetUrl.mockResolvedValue(
       'https://bucket.s3.amazonaws.com/signed-url'
     );
+
+    // Default spaceClient mock - allow all features
+    mocks.spaceClientEvaluate.mockResolvedValue({ eval: true });
+    // Default axios mock
+    mocks.axiosPut.mockResolvedValue({ data: {} });
 
     const module = await import('../../../src/services/beatService.js');
     BeatService = module.BeatService;
@@ -230,6 +256,11 @@ describe('BeatService', () => {
     });
 
     it('should throw error if file size exceeds limit', async () => {
+      // Mock spaceClient to reject the beat size
+      mocks.spaceClientEvaluate
+        .mockResolvedValueOnce({ eval: true }) // socialbeats-beats (max beats check)
+        .mockResolvedValueOnce({ eval: false }); // socialbeats-beatSize (size limit check)
+
       await expect(
         BeatService.generatePresignedUploadUrl({
           extension: 'mp3',
@@ -237,7 +268,7 @@ describe('BeatService', () => {
           size: 16 * 1024 * 1024, // 16MB (limit is 15MB)
           userId: 'user123',
         })
-      ).rejects.toThrow('File size exceeds maximum allowed');
+      ).rejects.toThrow('maximum beat size');
     });
   });
 
@@ -476,7 +507,8 @@ describe('BeatService', () => {
     it('should delete beat and associated files', async () => {
       const mockBeat = {
         _id: 'beat123',
-        audio: { s3Key: 'audio.mp3', s3CoverKey: 'cover.jpg' },
+        audio: { s3Key: 'audio.mp3', s3CoverKey: 'cover.jpg', size: 5000000 },
+        createdBy: { userId: 'user123' },
       };
 
       Beat.findById = vi.fn().mockResolvedValue(mockBeat);
@@ -504,7 +536,8 @@ describe('BeatService', () => {
     it('should handle S3 deletion errors gracefully for audio', async () => {
       const mockBeat = {
         _id: 'beat123',
-        audio: { s3Key: 'audio.mp3' },
+        audio: { s3Key: 'audio.mp3', size: 5000000 },
+        createdBy: { userId: 'user123' },
       };
 
       Beat.findById = vi.fn().mockResolvedValue(mockBeat);
@@ -519,7 +552,8 @@ describe('BeatService', () => {
     it('should handle S3 deletion errors gracefully for cover', async () => {
       const mockBeat = {
         _id: 'beat123',
-        audio: { s3Key: 'audio.mp3', s3CoverKey: 'cover.jpg' },
+        audio: { s3Key: 'audio.mp3', s3CoverKey: 'cover.jpg', size: 5000000 },
+        createdBy: { userId: 'user123' },
       };
 
       Beat.findById = vi.fn().mockResolvedValue(mockBeat);
@@ -536,7 +570,8 @@ describe('BeatService', () => {
     it('should return false if findByIdAndDelete returns null', async () => {
       const mockBeat = {
         _id: 'beat123',
-        audio: { s3Key: 'audio.mp3' },
+        audio: { s3Key: 'audio.mp3', size: 5000000 },
+        createdBy: { userId: 'user123' },
       };
 
       Beat.findById = vi.fn().mockResolvedValue(mockBeat);

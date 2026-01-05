@@ -114,6 +114,12 @@ const beatSchema = new mongoose.Schema(
       default: false,
     },
 
+    // Promoted beat (for explore prioritization)
+    promoted: {
+      type: Boolean,
+      default: false,
+    },
+
     // Información del creador (desnormalizada para microservicios)
     createdBy: {
       userId: {
@@ -184,6 +190,7 @@ beatSchema.index({ genre: 1 });
 beatSchema.index({ tags: 1 });
 beatSchema.index({ 'stats.plays': -1 });
 beatSchema.index({ isPublic: 1 });
+beatSchema.index({ promoted: -1, createdAt: -1 }); // For explore prioritization
 
 // Virtual para formatear duración en mm:ss
 beatSchema.virtual('formattedDuration').get(function () {
@@ -214,7 +221,8 @@ beatSchema.statics.findWithFilters = function (filters = {}) {
   if (filters.genre) query.genre = filters.genre;
   if (filters.tags) query.tags = { $in: filters.tags };
 
-  return this.find(query).sort({ createdAt: -1 });
+  // Sort by promoted first (true before false), then by createdAt descending
+  return this.find(query).sort({ promoted: -1, createdAt: -1 });
 };
 
 export default mongoose.model('Beat', beatSchema);

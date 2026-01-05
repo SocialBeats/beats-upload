@@ -17,30 +17,25 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
 } from '../config/s3.js';
+import { spaceClient } from '../utils/spaceConnection.js';
+import { features } from 'process';
+import axios from 'axios';
 
-const ALLOWED_EXTENSIONS = [
-  'mp3',
-  'wav',
-  'flac',
-  'aac',
-  'jpg',
-  'jpeg',
-  'png',
-  'webp',
-];
-const ALLOWED_MIME_TYPES = [
+const ALLOWED_AUDIO_EXTENSIONS = ['mp3', 'wav', 'flac', 'aac'];
+const ALLOWED_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
+const ALLOWED_AUDIO_MIME_TYPES = [
   'audio/mpeg',
   'audio/wav',
   'audio/x-wav',
   'audio/flac',
   'audio/aac',
   'audio/x-m4a',
-  'image/jpeg',
-  'image/png',
-  'image/webp',
 ];
+const ALLOWED_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB - Enforced by S3 Policy
 const PRESIGNED_URL_EXPIRY = 60; // 60 seconds
+const SPACE_URL = process.env.SPACE_URL || 'http://localhost:5403/';
+const SPACE_API_KEY = process.env.SPACE_API_KEY || '';
 
 export class BeatService {
   /**
@@ -65,27 +60,170 @@ export class BeatService {
     userId,
   }) {
     try {
-      // Validate size (client-side check, S3 policy enforces server-side)
-      if (size && size > MAX_FILE_SIZE) {
-        throw new Error(
-          `File size exceeds maximum allowed (${MAX_FILE_SIZE / 1024 / 1024}MB)`
-        );
-      }
-
       // Validate extension
       const normalizedExt = extension.toLowerCase();
-      if (!ALLOWED_EXTENSIONS.includes(normalizedExt)) {
+      const isAudioExt = ALLOWED_AUDIO_EXTENSIONS.includes(normalizedExt);
+      const isImageExt = ALLOWED_IMAGE_EXTENSIONS.includes(normalizedExt);
+      const beatSizeMB = Math.ceil(size / (1024 * 1024));
+
+      if (!isAudioExt && !isImageExt) {
         throw new Error(
-          `Invalid file extension. Allowed: ${ALLOWED_EXTENSIONS.join(', ')}`
+          `Invalid file extension. Allowed audio: ${ALLOWED_AUDIO_EXTENSIONS.join(', ')}. Allowed image: ${ALLOWED_IMAGE_EXTENSIONS.join(', ')}`
         );
       }
 
       // Validate MIME type
       const normalizedMime = mimetype.toLowerCase();
-      if (!ALLOWED_MIME_TYPES.includes(normalizedMime)) {
+      const isAudioMime = ALLOWED_AUDIO_MIME_TYPES.includes(normalizedMime);
+      const isImageMime = ALLOWED_IMAGE_MIME_TYPES.includes(normalizedMime);
+
+      if (!isAudioMime && !isImageMime) {
         throw new Error(
           `Invalid MIME type. Expected audio/image format, got: ${mimetype}`
         );
+      }
+
+      // Validate consistency between extension and MIME type
+      if ((isAudioExt && !isAudioMime) || (isImageExt && !isImageMime)) {
+        throw new Error(
+          `Mismatch between file extension and MIME type. Extension suggests ${isAudioExt ? 'audio' : 'image'}, but MIME type is ${mimetype}`
+        );
+      }
+
+      if (isAudioExt) {
+        const resultMaxBeats = await spaceClient.features.evaluate(
+          userId,
+          'socialbeats-beats',
+          { 'socialbeats-maxBeats': 1 }
+        );
+        if (!resultMaxBeats.eval) {
+          throw new Error(
+            'User has reached the maximum number of beats allowed for its plan. Try upgrading your plan.'
+          );
+        }
+        await axios.put(
+          `${SPACE_URL}/api/v1/contracts/${userId}/usageLevels`,
+          {
+            socialbeats: {
+              maxBeatSize: beatSizeMB,
+            },
+          },
+          {
+            headers: {
+              'x-api-key': SPACE_API_KEY,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+        const resultMaxBeatSize = await spaceClient.features.evaluate(
+          userId,
+          'socialbeats-beatSize'
+        );
+        if (!resultMaxBeatSize.eval) {
+          // Hacer llamada HTTP directa al endpoint de SPACE
+          await axios.put(
+            `${SPACE_URL}/api/v1/contracts/${userId}/usageLevels`,
+            {
+              socialbeats: {
+                maxBeats: -1, // Decrementa en 1 beat
+                maxBeatSize: -beatSizeMB,
+              },
+            },
+            {
+              headers: {
+                'x-api-key': SPACE_API_KEY,
+                'Content-Type': 'application/json',
+              },
+            }
+          );
+          throw new Error('The maximum beat size allowed is.');
+        } else {
+          // Hacer llamada HTTP directa al endpoint de SPACE
+          await axios.put(
+            `${SPACE_URL}/api/v1/contracts/${userId}/usageLevels`,
+            {
+              socialbeats: {
+                maxBeatSize: -beatSizeMB,
+              },
+            },
+            {
+              headers: {
+                'x-api-key': SPACE_API_KEY,
+                'Content-Type': 'application/json',
+              },
+            }
+          );
+        }
+        await axios.put(
+          `${SPACE_URL}/api/v1/contracts/${userId}/usageLevels`,
+          {
+            socialbeats: {
+              maxStorage: beatSizeMB,
+            },
+          },
+          {
+            headers: {
+              'x-api-key': SPACE_API_KEY,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+        const resultMaxStorage = await spaceClient.features.evaluate(
+          userId,
+          'socialbeats-storage',
+          { 'socialbeats-maxStorage': beatSizeMB }
+        );
+        logger.info('Evaluation result for storage', {
+          userId,
+          eval: resultMaxStorage.eval,
+        });
+        if (!resultMaxStorage.eval) {
+          // Hacer llamada HTTP directa al endpoint de SPACE
+          await axios.put(
+            `${SPACE_URL}/api/v1/contracts/${userId}/usageLevels`,
+            {
+              socialbeats: {
+                maxBeats: -1, // Decrementa en 1 beat
+                maxStorage: -beatSizeMB,
+              },
+            },
+            {
+              headers: {
+                'x-api-key': SPACE_API_KEY,
+                'Content-Type': 'application/json',
+              },
+            }
+          );
+          throw new Error(
+            'User has reached the maximum storage allowed for its plan. Try upgrading your plan.'
+          );
+        }
+      } else {
+        const resultCover = await spaceClient.features.evaluate(
+          userId,
+          'socialbeats-cover'
+        );
+        if (!resultCover.eval) {
+          // Hacer llamada HTTP directa al endpoint de SPACE
+          await axios.put(
+            `${SPACE_URL}/api/v1/contracts/${userId}/usageLevels`,
+            {
+              socialbeats: {
+                maxBeats: -1, // Decrementa en 1 beat
+                maxStorage: -beatSizeMB,
+              },
+            },
+            {
+              headers: {
+                'x-api-key': SPACE_API_KEY,
+                'Content-Type': 'application/json',
+              },
+            }
+          );
+          throw new Error(
+            'You need to upgrade your plan to upload cover images.'
+          );
+        }
       }
 
       // Generate unique filename with UUID v4
@@ -757,6 +895,25 @@ export class BeatService {
         return false;
       }
 
+      const beatSizeMB = beat.audio.size / (1024 * 1024);
+
+      // Hacer llamada HTTP directa al endpoint de SPACE
+      await axios.put(
+        `${SPACE_URL}/api/v1/contracts/${beat.createdBy.userId}/usageLevels`,
+        {
+          socialbeats: {
+            maxBeats: -1, // Decrementa en 1 beat
+            maxStorage: -beatSizeMB,
+          },
+        },
+        {
+          headers: {
+            'x-api-key': SPACE_API_KEY,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
       // 2. Borrar de Base de Datos PRIMERO
       const result = await Beat.findByIdAndDelete(beatId);
 
@@ -895,8 +1052,15 @@ export class BeatService {
    * @param {string} beatId - ID del beat
    * @returns {Promise<Object|null>} Beat actualizado
    */
-  static async incrementDownloads(beatId) {
+  static async incrementDownloads(beatId, userId) {
     try {
+      const result = await spaceClient.features.evaluate(
+        userId,
+        'socialbeats-downloads'
+      );
+      if (!result.eval) {
+        throw new Error('You need to upgrade your plan to download beats.');
+      }
       // Usar operación atómica $inc para evitar condiciones de carrera
       const updatedBeat = await Beat.findByIdAndUpdate(
         beatId,
@@ -1080,6 +1244,68 @@ export class BeatService {
       hasNext: page < totalPages,
       hasPrev: page > 1,
     };
+  }
+
+  /**
+   * Toggle beat promotion status.
+   * When promoting (turning ON), validates the promotedBeat feature via Space API.
+   * When un-promoting (turning OFF), no validation needed.
+   *
+   * @param {string} beatId - The beat ID to toggle promotion
+   * @param {string} userId - The user ID requesting the toggle
+   * @returns {Promise<Object>} Updated beat with new promoted status
+   * @throws {Error} If beat not found, user not owner, or feature not available
+   */
+  static async togglePromotion(beatId, userId) {
+    try {
+      // Find the beat
+      const beat = await Beat.findById(beatId);
+      if (!beat) {
+        throw new Error('Beat not found');
+      }
+
+      // Verify ownership
+      if (beat.createdBy?.userId !== userId) {
+        throw new Error('Not authorized to modify this beat');
+      }
+
+      const newPromotedStatus = !beat.promoted;
+
+      // If turning ON promotion, check Space API for promotedBeat feature
+      if (newPromotedStatus === true) {
+        logger.info('Checking promotedBeat feature for user', { userId });
+
+        const result = await spaceClient.features.evaluate(
+          userId,
+          'socialbeats-promotedBeat'
+        );
+
+        if (!result.eval) {
+          throw new Error(
+            'Promoted beat feature not available. Please upgrade your plan or purchase the add-on.'
+          );
+        }
+      }
+
+      // Update the beat
+      beat.promoted = newPromotedStatus;
+      await beat.save();
+
+      logger.info('Beat promotion toggled', {
+        beatId,
+        userId,
+        promoted: newPromotedStatus,
+      });
+
+      return beat;
+    } catch (error) {
+      logger.error('Error toggling beat promotion', {
+        beatId,
+        userId,
+        error: error.message,
+      });
+      throw error;
+    }
   }
 }
 // Re-export ServerOverloadError for controller error handling
