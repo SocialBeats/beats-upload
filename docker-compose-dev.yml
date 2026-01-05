@@ -71,6 +71,8 @@ services:
       - KAFKA_COOLDOWN=${KAFKA_COOLDOWN}
       - KAFKA_BROKER=${KAFKA_BROKER}
       - ENABLE_KAFKA=${ENABLE_KAFKA}
+      - SPACE_URL=${SPACE_URL}
+      - SPACE_API_KEY=${SPACE_API_KEY}
     depends_on:
       - mongodb
       # - kafka
