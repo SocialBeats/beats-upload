@@ -14,7 +14,7 @@ function handleOverloadError(error, res) {
     res.set('x-retry-after', String(error.retryAfter || 5));
     res.status(503).json({
       success: false,
-      error: 'Service Unavailable',
+      error: 'Servicio no disponible',
       message: error.message,
     });
     return true;
@@ -54,7 +54,7 @@ export class BeatController {
 
       res.status(200).json({
         success: true,
-        message: 'Upload URL generated successfully',
+        message: 'URL de subida generada correctamente',
         data: {
           // S3 endpoint URL for POST upload
           url: result.url,
@@ -89,7 +89,7 @@ export class BeatController {
 
       res.status(500).json({
         success: false,
-        message: 'Error generating upload URL',
+        message: 'Error al generar la URL de subida',
         error:
           process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
@@ -122,7 +122,7 @@ export class BeatController {
       if (error.message.includes('not found')) {
         return res.status(404).json({
           success: false,
-          message: 'Beat or audio file not found',
+          message: 'Beat o archivo de audio no encontrado',
         });
       }
 
@@ -131,7 +131,7 @@ export class BeatController {
 
       res.status(500).json({
         success: false,
-        message: 'Error streaming audio',
+        message: 'Error al reproducir el audio',
         error:
           process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
@@ -152,7 +152,7 @@ export class BeatController {
       if (!Array.isArray(beatIds) || beatIds.length === 0) {
         return res.status(400).json({
           success: false,
-          message: 'beatIds must be a non-empty array',
+          message: 'beatIds debe ser un array no vacío',
         });
       }
 
@@ -161,7 +161,7 @@ export class BeatController {
       if (beatIds.length > MAX_BATCH_SIZE) {
         return res.status(400).json({
           success: false,
-          message: `Maximum ${MAX_BATCH_SIZE} beats per batch request`,
+          message: `Máximo ${MAX_BATCH_SIZE} beats por solicitud`,
         });
       }
 
@@ -187,7 +187,7 @@ export class BeatController {
 
       res.status(500).json({
         success: false,
-        message: 'Error generating batch signed URLs',
+        message: 'Error al generar URLs firmadas en lote',
         error:
           process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
@@ -209,7 +209,7 @@ export class BeatController {
       if (!beat) {
         return res.status(404).json({
           success: false,
-          message: 'Beat not found',
+          message: 'Beat no encontrado',
         });
       }
 
@@ -217,7 +217,7 @@ export class BeatController {
       if (!beat.isDownloadable) {
         return res.status(403).json({
           success: false,
-          message: 'This beat is not available for download',
+          message: 'Este beat no está disponible para descargar',
         });
       }
 
@@ -238,7 +238,7 @@ export class BeatController {
 
       res.status(200).json({
         success: true,
-        message: 'Download link generated',
+        message: 'Enlace de descarga generado',
         data: {
           downloadUrl,
           stats: {
@@ -258,7 +258,7 @@ export class BeatController {
 
       res.status(500).json({
         success: false,
-        message: 'Error processing download',
+        message: 'Error al procesar la descarga',
         error:
           process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
@@ -291,7 +291,7 @@ export class BeatController {
 
       res.status(201).json({
         success: true,
-        message: 'Beat created successfully',
+        message: 'Beat creado correctamente',
         data: newBeat,
       });
     } catch (error) {
@@ -304,7 +304,7 @@ export class BeatController {
       if (error.name === 'ValidationError') {
         return res.status(400).json({
           success: false,
-          message: 'Validation error',
+          message: 'Error de validación',
           errors: Object.values(error.errors).map((err) => ({
             field: err.path,
             message: err.message,
@@ -316,13 +316,13 @@ export class BeatController {
       if (error.code === 11000) {
         return res.status(409).json({
           success: false,
-          message: 'Beat with this information already exists',
+          message: 'Ya existe un beat con esta información',
         });
       }
 
       res.status(500).json({
         success: false,
-        message: 'Internal server error',
+        message: 'Error interno del servidor',
         error:
           process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
@@ -360,7 +360,7 @@ export class BeatController {
 
       res.status(200).json({
         success: true,
-        message: 'Beats retrieved successfully',
+        message: 'Beats obtenidos correctamente',
         data: result.beats,
         pagination: result.pagination,
       });
@@ -368,7 +368,7 @@ export class BeatController {
       logger.error('Error in getAllBeats controller', { error: error.message });
       res.status(500).json({
         success: false,
-        message: 'Error retrieving beats',
+        message: 'Error al obtener los beats',
         error:
           process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
@@ -392,14 +392,14 @@ export class BeatController {
         if (!beat) {
           return res.status(404).json({
             success: false,
-            message: 'Beat not found',
+            message: 'Beat no encontrado',
           });
         }
       }
 
       res.status(200).json({
         success: true,
-        message: 'Beat retrieved successfully',
+        message: 'Beat obtenido correctamente',
         data: beat,
       });
     } catch (error) {
@@ -412,13 +412,13 @@ export class BeatController {
       if (error.name === 'CastError') {
         return res.status(400).json({
           success: false,
-          message: 'Invalid beat ID format',
+          message: 'Formato de ID de beat inválido',
         });
       }
 
       res.status(500).json({
         success: false,
-        message: 'Error retrieving beat',
+        message: 'Error al obtener el beat',
         error:
           process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
@@ -441,7 +441,7 @@ export class BeatController {
       if (!updatedBeat) {
         return res.status(404).json({
           success: false,
-          message: 'Beat not found',
+          message: 'Beat no encontrado',
         });
       }
 
@@ -449,7 +449,7 @@ export class BeatController {
 
       res.status(200).json({
         success: true,
-        message: 'Beat updated successfully',
+        message: 'Beat actualizado correctamente',
         data: updatedBeat,
       });
     } catch (error) {
@@ -461,7 +461,7 @@ export class BeatController {
       if (error.name === 'ValidationError') {
         return res.status(400).json({
           success: false,
-          message: 'Validation error',
+          message: 'Error de validación',
           errors: Object.values(error.errors).map((err) => ({
             field: err.path,
             message: err.message,
@@ -472,13 +472,13 @@ export class BeatController {
       if (error.name === 'CastError') {
         return res.status(400).json({
           success: false,
-          message: 'Invalid beat ID format',
+          message: 'Formato de ID de beat inválido',
         });
       }
 
       res.status(500).json({
         success: false,
-        message: 'Error updating beat',
+        message: 'Error al actualizar el beat',
         error:
           process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
@@ -498,7 +498,7 @@ export class BeatController {
       if (!deleted) {
         return res.status(404).json({
           success: false,
-          message: 'Beat not found',
+          message: 'Beat no encontrado',
         });
       }
 
@@ -506,7 +506,7 @@ export class BeatController {
 
       res.status(200).json({
         success: true,
-        message: 'Beat deleted successfully',
+        message: 'Beat eliminado correctamente',
       });
     } catch (error) {
       logger.error('Error in deleteBeat controller', {
@@ -517,13 +517,13 @@ export class BeatController {
       if (error.name === 'CastError') {
         return res.status(400).json({
           success: false,
-          message: 'Invalid beat ID format',
+          message: 'Formato de ID de beat inválido',
         });
       }
 
       res.status(500).json({
         success: false,
-        message: 'Error deleting beat',
+        message: 'Error al eliminar el beat',
         error:
           process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
@@ -541,7 +541,7 @@ export class BeatController {
       if (!searchTerm || searchTerm.trim().length < 2) {
         return res.status(400).json({
           success: false,
-          message: 'Search term must be at least 2 characters long',
+          message: 'El término de búsqueda debe tener al menos 2 caracteres',
         });
       }
 
@@ -552,7 +552,7 @@ export class BeatController {
 
       res.status(200).json({
         success: true,
-        message: 'Search completed successfully',
+        message: 'Búsqueda completada correctamente',
         data: beats,
         searchTerm: searchTerm.trim(),
       });
@@ -563,7 +563,7 @@ export class BeatController {
       });
       res.status(500).json({
         success: false,
-        message: 'Error performing search',
+        message: 'Error al realizar la búsqueda',
         error:
           process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
@@ -597,7 +597,7 @@ export class BeatController {
       if (!beat) {
         return res.status(404).json({
           success: false,
-          message: 'Beat not found',
+          message: 'Beat no encontrado',
         });
       }
 
@@ -618,7 +618,7 @@ export class BeatController {
 
       res.status(200).json({
         success: true,
-        message: 'Play count updated',
+        message: 'Contador de reproducciones actualizado',
         data: {
           beatId: id,
           plays: currentPlays,
@@ -631,7 +631,7 @@ export class BeatController {
       });
       res.status(500).json({
         success: false,
-        message: 'Error updating play count',
+        message: 'Error al actualizar el contador de reproducciones',
         error:
           process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
@@ -673,7 +673,7 @@ export class BeatController {
 
       res.status(200).json({
         success: true,
-        message: 'User beats retrieved successfully',
+        message: 'Beats del usuario obtenidos correctamente',
         data: result.beats,
         pagination: result.pagination,
         userId: result.userId,
@@ -685,7 +685,7 @@ export class BeatController {
       });
       res.status(500).json({
         success: false,
-        message: 'Error retrieving user beats',
+        message: 'Error al obtener los beats del usuario',
         error:
           process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
@@ -702,14 +702,14 @@ export class BeatController {
 
       res.status(200).json({
         success: true,
-        message: 'Statistics retrieved successfully',
+        message: 'Estadísticas obtenidas correctamente',
         data: stats,
       });
     } catch (error) {
       logger.error('Error in getStats controller', { error: error.message });
       res.status(500).json({
         success: false,
-        message: 'Error retrieving statistics',
+        message: 'Error al obtener las estadísticas',
         error:
           process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
@@ -731,7 +731,7 @@ export class BeatController {
       if (!userId) {
         return res.status(401).json({
           success: false,
-          message: 'Authentication required',
+          message: 'Se requiere autenticación',
         });
       }
 
@@ -740,8 +740,8 @@ export class BeatController {
       res.status(200).json({
         success: true,
         message: beat.promoted
-          ? 'Beat promoted successfully'
-          : 'Beat promotion removed',
+          ? 'Beat promocionado correctamente'
+          : 'Promoción del beat eliminada',
         data: {
           beatId: beat._id,
           promoted: beat.promoted,
@@ -758,27 +758,27 @@ export class BeatController {
       if (error.message === 'Beat not found') {
         return res.status(404).json({
           success: false,
-          message: error.message,
+          message: 'Beat no encontrado',
         });
       }
 
       if (error.message === 'Not authorized to modify this beat') {
         return res.status(403).json({
           success: false,
-          message: error.message,
+          message: 'No autorizado para modificar este beat',
         });
       }
 
       if (error.message.includes('feature not available')) {
         return res.status(403).json({
           success: false,
-          message: error.message,
+          message: 'Función no disponible en tu plan actual',
         });
       }
 
       res.status(500).json({
         success: false,
-        message: 'Error toggling beat promotion',
+        message: 'Error al cambiar el estado de promoción del beat',
         error:
           process.env.NODE_ENV === 'development' ? error.message : undefined,
       });

@@ -250,7 +250,7 @@ describe('BeatController', () => {
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: 'Validation error',
+          message: 'Error de validación',
         })
       );
     });
@@ -265,7 +265,7 @@ describe('BeatController', () => {
       expect(res.status).toHaveBeenCalledWith(409);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: 'Beat with this information already exists',
+          message: 'Ya existe un beat con esta información',
         })
       );
     });
@@ -379,7 +379,7 @@ describe('BeatController', () => {
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: 'Invalid beat ID format',
+          message: 'Formato de ID de beat inválido',
         })
       );
     });
@@ -448,7 +448,7 @@ describe('BeatController', () => {
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: 'Validation error',
+          message: 'Error de validación',
         })
       );
     });
@@ -464,7 +464,7 @@ describe('BeatController', () => {
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: 'Invalid beat ID format',
+          message: 'Formato de ID de beat inválido',
         })
       );
     });
@@ -530,7 +530,7 @@ describe('BeatController', () => {
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: 'Invalid beat ID format',
+          message: 'Formato de ID de beat inválido',
         })
       );
     });
@@ -730,7 +730,7 @@ describe('BeatController', () => {
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           success: true,
-          message: 'User beats retrieved successfully',
+          message: 'Beats del usuario obtenidos correctamente',
           data: mockResult.beats,
           pagination: mockResult.pagination,
           userId: mockResult.userId,
@@ -846,7 +846,7 @@ describe('BeatController', () => {
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           success: false,
-          message: 'Error retrieving user beats',
+          message: 'Error al obtener los beats del usuario',
         })
       );
     });

@@ -241,7 +241,7 @@ describe('BeatService', () => {
           mimetype: 'application/x-msdownload',
           userId: 'user123',
         })
-      ).rejects.toThrow('Invalid file extension');
+      ).rejects.toThrow('Extensión de archivo inválida');
     });
 
     it('should throw error for invalid mimetype', async () => {
@@ -252,7 +252,7 @@ describe('BeatService', () => {
           size: 1024,
           userId: 'user123',
         })
-      ).rejects.toThrow('Invalid MIME type');
+      ).rejects.toThrow('Tipo MIME inválido');
     });
 
     it('should throw error if file size exceeds limit', async () => {
@@ -268,7 +268,7 @@ describe('BeatService', () => {
           size: 16 * 1024 * 1024, // 16MB (limit is 15MB)
           userId: 'user123',
         })
-      ).rejects.toThrow('maximum beat size');
+      ).rejects.toThrow('tamaño máximo de beat');
     });
   });
 
