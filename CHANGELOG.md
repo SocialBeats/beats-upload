@@ -1,3 +1,24 @@
+# Release v3.0.1
+
+## Features
+No new features.
+## Tests
+No test changes.
+## Documentation
+No documentation changes.
+## Fixes
+- fix: 400 error messages handled to load on frontend
+- fix: error logs turned into spanish
+
+## Continuous integration (CI)
+No CI changes.
+## Other changes
+- Merge pull request #26 from SocialBeats/hotfix/transalte
+
+## Full commit history
+
+For full commit history, see [here](https://github.com/SocialBeats/beats-upload/compare/v3.0.0...v3.0.1).
+
 # Release v3.0.0
 
 ## Features
