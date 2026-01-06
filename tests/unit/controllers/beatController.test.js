@@ -122,7 +122,9 @@ describe('BeatController', () => {
     it('should return 400 if extension missing', async () => {
       req.body = { mimetype: 'audio/mpeg' };
       BeatService.generatePresignedUploadUrl.mockRejectedValue(
-        new Error('Invalid file extension')
+        new Error(
+          'Extensión de archivo inválida. Audio permitido: mp3, wav, flac, aac. Imágenes permitidas: jpg, jpeg, png, webp'
+        )
       );
       await BeatController.getUploadUrl(req, res);
       expect(res.status).toHaveBeenCalledWith(400);
@@ -135,7 +137,7 @@ describe('BeatController', () => {
         size: 100 * 1024 * 1024,
       };
       BeatService.generatePresignedUploadUrl.mockRejectedValue(
-        new Error('File size exceeds maximum allowed')
+        new Error('El tamaño máximo de beat permitido ha sido excedido.')
       );
       await BeatController.getUploadUrl(req, res);
       expect(res.status).toHaveBeenCalledWith(400);
@@ -144,7 +146,9 @@ describe('BeatController', () => {
     it('should return 400 if service throws Invalid error', async () => {
       req.body = { extension: 'exe', mimetype: 'application/x-msdownload' };
       BeatService.generatePresignedUploadUrl.mockRejectedValue(
-        new Error('Invalid file extension')
+        new Error(
+          'Extensión de archivo inválida. Audio permitido: mp3, wav, flac, aac. Imágenes permitidas: jpg, jpeg, png, webp'
+        )
       );
 
       await BeatController.getUploadUrl(req, res);
@@ -153,7 +157,8 @@ describe('BeatController', () => {
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           success: false,
-          message: 'Invalid file extension',
+          message:
+            'Extensión de archivo inválida. Audio permitido: mp3, wav, flac, aac. Imágenes permitidas: jpg, jpeg, png, webp',
         })
       );
     });
@@ -250,7 +255,7 @@ describe('BeatController', () => {
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: 'Validation error',
+          message: 'Error de validación',
         })
       );
     });
@@ -265,7 +270,7 @@ describe('BeatController', () => {
       expect(res.status).toHaveBeenCalledWith(409);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: 'Beat with this information already exists',
+          message: 'Ya existe un beat con esta información',
         })
       );
     });
@@ -379,7 +384,7 @@ describe('BeatController', () => {
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: 'Invalid beat ID format',
+          message: 'Formato de ID de beat inválido',
         })
       );
     });
@@ -448,7 +453,7 @@ describe('BeatController', () => {
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: 'Validation error',
+          message: 'Error de validación',
         })
       );
     });
@@ -464,7 +469,7 @@ describe('BeatController', () => {
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: 'Invalid beat ID format',
+          message: 'Formato de ID de beat inválido',
         })
       );
     });
@@ -530,7 +535,7 @@ describe('BeatController', () => {
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: 'Invalid beat ID format',
+          message: 'Formato de ID de beat inválido',
         })
       );
     });
@@ -730,7 +735,7 @@ describe('BeatController', () => {
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           success: true,
-          message: 'User beats retrieved successfully',
+          message: 'Beats del usuario obtenidos correctamente',
           data: mockResult.beats,
           pagination: mockResult.pagination,
           userId: mockResult.userId,
@@ -846,7 +851,7 @@ describe('BeatController', () => {
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           success: false,
-          message: 'Error retrieving user beats',
+          message: 'Error al obtener los beats del usuario',
         })
       );
     });

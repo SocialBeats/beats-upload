@@ -68,7 +68,7 @@ export class BeatService {
 
       if (!isAudioExt && !isImageExt) {
         throw new Error(
-          `Invalid file extension. Allowed audio: ${ALLOWED_AUDIO_EXTENSIONS.join(', ')}. Allowed image: ${ALLOWED_IMAGE_EXTENSIONS.join(', ')}`
+          `Extensión de archivo inválida. Audio permitido: ${ALLOWED_AUDIO_EXTENSIONS.join(', ')}. Imágenes permitidas: ${ALLOWED_IMAGE_EXTENSIONS.join(', ')}`
         );
       }
 
@@ -79,14 +79,14 @@ export class BeatService {
 
       if (!isAudioMime && !isImageMime) {
         throw new Error(
-          `Invalid MIME type. Expected audio/image format, got: ${mimetype}`
+          `Tipo MIME inválido. Se esperaba formato de audio/imagen, se recibió: ${mimetype}`
         );
       }
 
       // Validate consistency between extension and MIME type
       if ((isAudioExt && !isAudioMime) || (isImageExt && !isImageMime)) {
         throw new Error(
-          `Mismatch between file extension and MIME type. Extension suggests ${isAudioExt ? 'audio' : 'image'}, but MIME type is ${mimetype}`
+          `Inconsistencia entre extensión y tipo MIME. La extensión sugiere ${isAudioExt ? 'audio' : 'imagen'}, pero el tipo MIME es ${mimetype}`
         );
       }
 
@@ -98,7 +98,7 @@ export class BeatService {
         );
         if (!resultMaxBeats.eval) {
           throw new Error(
-            'User has reached the maximum number of beats allowed for its plan. Try upgrading your plan.'
+            'Has alcanzado el número máximo de beats permitido en tu plan. Intenta mejorar tu suscripción.'
           );
         }
         await axios.put(
@@ -136,7 +136,9 @@ export class BeatService {
               },
             }
           );
-          throw new Error('The maximum beat size allowed is.');
+          throw new Error(
+            'El tamaño máximo de beat permitido ha sido excedido.'
+          );
         } else {
           // Hacer llamada HTTP directa al endpoint de SPACE
           await axios.put(
@@ -195,7 +197,7 @@ export class BeatService {
             }
           );
           throw new Error(
-            'User has reached the maximum storage allowed for its plan. Try upgrading your plan.'
+            'Has alcanzado el almacenamiento máximo permitido en tu plan. Intenta mejorar tu suscripción.'
           );
         }
       } else {
@@ -221,7 +223,7 @@ export class BeatService {
             }
           );
           throw new Error(
-            'You need to upgrade your plan to upload cover images.'
+            'Necesitas mejorar tu plan para subir imágenes de portada.'
           );
         }
       }
@@ -626,13 +628,6 @@ export class BeatService {
    */
   static async getAllBeats(options = {}) {
     try {
-      // ============ [DEBUG-TRACE] SERVICIO - ENTRADA ============
-      logger.info(
-        '[DEBUG-TRACE] BeatService.getAllBeats - Options recibidos:',
-        JSON.stringify(options, null, 2)
-      );
-      // ============================================================
-
       const {
         page = 1,
         limit = 10,
@@ -644,79 +639,17 @@ export class BeatService {
       const skip = (page - 1) * limit;
       const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
 
-      // ============ [DEBUG-TRACE] FILTROS EXTRAÍDOS ============
-      logger.info(
-        '[DEBUG-TRACE] Filtros extraídos de options:',
-        JSON.stringify(filters, null, 2)
-      );
-      logger.info(
-        '[DEBUG-TRACE] Paginación: skip=' +
-          skip +
-          ', limit=' +
-          limit +
-          ', sort=' +
-          JSON.stringify(sort)
-      );
-      // ============================================================
-
       // Usar el método estático del modelo para filtros
       const query = Beat.findWithFilters(filters);
-
-      // ============ [DEBUG-TRACE] QUERY OBJECT (CRÍTICO) ============
-      const queryFilter = query.getQuery();
-      logger.info(
-        '[DEBUG-TRACE] 🔍 QUERY OBJECT completo que se enviará a MongoDB:',
-        JSON.stringify(queryFilter, null, 2)
-      );
-      logger.info(
-        '[DEBUG-TRACE] 🔍 Query con options: skip=' +
-          skip +
-          ', limit=' +
-          limit +
-          ', sort=' +
-          JSON.stringify(sort)
-      );
-      // ============================================================
 
       const [beats, totalBeats] = await Promise.all([
         query.skip(skip).limit(parseInt(limit)).sort(sort),
         Beat.countDocuments(query.getQuery()),
       ]);
 
-      // ============ [DEBUG-TRACE] RAW DATA DE BD ============
-      logger.info('[DEBUG-TRACE] 📦 Respuesta RAW de MongoDB:');
-      logger.info('[DEBUG-TRACE] - Tipo de beats:', typeof beats);
-      logger.info(
-        '[DEBUG-TRACE] - Array.isArray(beats):',
-        Array.isArray(beats)
-      );
-      logger.info('[DEBUG-TRACE] - beats.length:', beats?.length);
-      logger.info('[DEBUG-TRACE] - totalBeats (count):', totalBeats);
-      if (beats && beats.length > 0) {
-        logger.info(
-          '[DEBUG-TRACE] - Primer beat (sample):',
-          JSON.stringify(
-            {
-              _id: beats[0]._id,
-              title: beats[0].title,
-              isPublic: beats[0].isPublic,
-              createdAt: beats[0].createdAt,
-              audio: beats[0].audio
-                ? { s3Key: beats[0].audio.s3Key, url: beats[0].audio.url }
-                : 'NO AUDIO',
-            },
-            null,
-            2
-          )
-        );
-      } else {
-        logger.info('[DEBUG-TRACE] ⚠️ NO HAY BEATS EN LA RESPUESTA');
-      }
-      // ============================================================
-
       const pagination = this._getPaginationMetadata(totalBeats, page, limit);
 
-      logger.info('Retrieved beats', {
+      logger.info('Beats obtenidos', {
         count: beats.length,
         page,
         totalPages: pagination.totalPages,
@@ -1059,7 +992,7 @@ export class BeatService {
         'socialbeats-downloads'
       );
       if (!result.eval) {
-        throw new Error('You need to upgrade your plan to download beats.');
+        throw new Error('Necesitas mejorar tu plan para descargar beats.');
       }
       // Usar operación atómica $inc para evitar condiciones de carrera
       const updatedBeat = await Beat.findByIdAndUpdate(
@@ -1261,12 +1194,12 @@ export class BeatService {
       // Find the beat
       const beat = await Beat.findById(beatId);
       if (!beat) {
-        throw new Error('Beat not found');
+        throw new Error('Beat no encontrado');
       }
 
       // Verify ownership
       if (beat.createdBy?.userId !== userId) {
-        throw new Error('Not authorized to modify this beat');
+        throw new Error('No autorizado para modificar este beat');
       }
 
       const newPromotedStatus = !beat.promoted;
@@ -1282,7 +1215,7 @@ export class BeatService {
 
         if (!result.eval) {
           throw new Error(
-            'Promoted beat feature not available. Please upgrade your plan or purchase the add-on.'
+            'Función de beat promocionado no disponible. Por favor, mejora tu plan o adquiere el complemento.'
           );
         }
       }
