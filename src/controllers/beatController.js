@@ -78,8 +78,14 @@ export class BeatController {
 
       // Handle validation errors from service
       if (
-        error.message.includes('Invalid') ||
-        error.message.includes('exceeds')
+        error.message.includes('Inválido') ||
+        error.message.includes('inválido') ||
+        error.message.includes('inválida') ||
+        error.message.includes('excede') ||
+        error.message.includes('excedido') ||
+        error.message.includes('alcanzado') ||
+        error.message.includes('Necesitas mejorar') ||
+        error.message.includes('Inconsistencia')
       ) {
         return res.status(400).json({
           success: false,
@@ -255,6 +261,17 @@ export class BeatController {
 
       // Handle server overload (503)
       if (handleOverloadError(error, res)) return;
+
+      // Handle plan/feature limit errors (400)
+      if (
+        error.message.includes('Necesitas mejorar tu plan') ||
+        error.message.includes('no encontrado')
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
 
       res.status(500).json({
         success: false,
@@ -754,25 +771,25 @@ export class BeatController {
         error: error.message,
       });
 
-      // Handle specific errors
-      if (error.message === 'Beat not found') {
+      // Handle specific errors (mensajes del service en español)
+      if (error.message.includes('no encontrado')) {
         return res.status(404).json({
           success: false,
-          message: 'Beat no encontrado',
+          message: error.message,
         });
       }
 
-      if (error.message === 'Not authorized to modify this beat') {
+      if (error.message.includes('No autorizado')) {
         return res.status(403).json({
           success: false,
-          message: 'No autorizado para modificar este beat',
+          message: error.message,
         });
       }
 
-      if (error.message.includes('feature not available')) {
+      if (error.message.includes('no disponible')) {
         return res.status(403).json({
           success: false,
-          message: 'Función no disponible en tu plan actual',
+          message: error.message,
         });
       }
 

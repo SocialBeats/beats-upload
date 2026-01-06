@@ -122,7 +122,9 @@ describe('BeatController', () => {
     it('should return 400 if extension missing', async () => {
       req.body = { mimetype: 'audio/mpeg' };
       BeatService.generatePresignedUploadUrl.mockRejectedValue(
-        new Error('Invalid file extension')
+        new Error(
+          'Extensión de archivo inválida. Audio permitido: mp3, wav, flac, aac. Imágenes permitidas: jpg, jpeg, png, webp'
+        )
       );
       await BeatController.getUploadUrl(req, res);
       expect(res.status).toHaveBeenCalledWith(400);
@@ -135,7 +137,7 @@ describe('BeatController', () => {
         size: 100 * 1024 * 1024,
       };
       BeatService.generatePresignedUploadUrl.mockRejectedValue(
-        new Error('File size exceeds maximum allowed')
+        new Error('El tamaño máximo de beat permitido ha sido excedido.')
       );
       await BeatController.getUploadUrl(req, res);
       expect(res.status).toHaveBeenCalledWith(400);
@@ -144,7 +146,9 @@ describe('BeatController', () => {
     it('should return 400 if service throws Invalid error', async () => {
       req.body = { extension: 'exe', mimetype: 'application/x-msdownload' };
       BeatService.generatePresignedUploadUrl.mockRejectedValue(
-        new Error('Invalid file extension')
+        new Error(
+          'Extensión de archivo inválida. Audio permitido: mp3, wav, flac, aac. Imágenes permitidas: jpg, jpeg, png, webp'
+        )
       );
 
       await BeatController.getUploadUrl(req, res);
@@ -153,7 +157,8 @@ describe('BeatController', () => {
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           success: false,
-          message: 'Invalid file extension',
+          message:
+            'Extensión de archivo inválida. Audio permitido: mp3, wav, flac, aac. Imágenes permitidas: jpg, jpeg, png, webp',
         })
       );
     });
